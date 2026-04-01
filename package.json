@@ -1,0 +1,21 @@
+{
+  "name": "tower-defense-tests",
+  "version": "1.0.0",
+  "description": "Automated test suite for Tower Defense game",
+  "main": "test-runner.js",
+  "scripts": {
+    "test": "node test-runner.js",
+    "test:watch": "nodemon --exec node test-runner.js",
+    "test:report": "node test-runner.js --report"
+  },
+  "keywords": ["tower-defense", "game", "tests", "automation"],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "puppeteer": "^21.6.0",
+    "puppeteer-core": "^21.6.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.3"
+  }
+}

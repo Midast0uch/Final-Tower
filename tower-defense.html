@@ -1,0 +1,1033 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tower Defense</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@600;700;800&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: 'Nunito', sans-serif;
+            background: #2C3E50;
+            overflow: hidden;
+            color: white;
+        }
+        #game-container { position: relative; width: 100vw; height: 100vh; }
+        #ui-layer {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            pointer-events: none;
+        }
+        .hud-panel {
+            background: rgba(44, 62, 80, 0.9);
+            backdrop-filter: blur(10px);
+            border-radius: 12px;
+            padding: 15px;
+            margin-bottom: 10px;
+            pointer-events: auto;
+        }
+        .resource-bar {
+            display: flex; gap: 30px; padding: 12px 20px;
+            background: rgba(76, 175, 80, 0.2);
+            border-radius: 10px;
+            font-weight: bold;
+            font-size: 14px;
+        }
+        .resource { display: flex; align-items: center; gap: 8px; }
+        .energy-bar {
+            position: absolute; top: 20px; left: 50%; transform: translateX(-50%);
+            width: 400px;
+        }
+        #chaos-meter {
+            position: absolute; bottom: 30px; right: 30px; width: 180px;
+        }
+        .meter-container {
+            background: rgba(0, 0, 0, 0.5);
+            border-radius: 12px;
+            padding: 12px;
+            text-align: center;
+        }
+        #chaos-fill {
+            height: 8px; background: #37474f; border-radius: 4px; margin: 8px 0;
+            overflow: hidden;
+        }
+        #chaos-fill::after {
+            content: ''; display: block; height: 100%;
+            width: 0%; background: linear-gradient(90deg, #ff6b6b, #feca57);
+            transition: width 0.3s ease;
+        }
+        .tower-selection {
+            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 12px;
+        }
+        .tower-btn {
+            width: 80px; height: 90px;
+            background: #1e272e;
+            border: 3px solid #4b6584;
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .tower-btn:hover { transform: translateY(-5px); }
+        .tower-btn.selected { border-color: #69db7c; box-shadow: 0 0 15px rgba(105, 219, 124, 0.5); }
+        .tower-btn.disabled { opacity: 0.5; cursor: not-allowed; }
+        .tower-icon {
+            width: 40px; height: 40px;
+            margin-bottom: 6px;
+        }
+        .energy-popup {
+            position: absolute;
+            color: #fff;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
+            pointer-events: none;
+            animation: floatUp 1s ease-out forwards;
+        }
+        @keyframes floatUp {
+            from { opacity: 1; transform: translateY(0); }
+            to { opacity: 0; transform: translateY(-30px); }
+        }
+        #event-popup {
+            position: absolute; top: 80px; left: 50%; transform: translateX(-50%);
+            background: rgba(76, 175, 80, 0.95);
+            padding: 20px 30px;
+            border-radius: 12px;
+            font-size: 18px;
+            opacity: 0;
+            transition: opacity 0.3s;
+            pointer-events: none;
+        }
+        #event-popup.show { opacity: 1; }
+        .start-btn {
+            position: absolute; top: 50%; left: 50%;
+            transform: translate(-50%, -50%);
+            padding: 20px 40px;
+            font-size: 24px; font-weight: bold;
+            background: #69db7c;
+            color: #1e272e;
+            border: none; border-radius: 50px;
+            cursor: pointer; box-shadow: 0 4px 20px rgba(105,219,124,0.4);
+        }
+        .game-over {
+            position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.85);
+            display: flex; align-items: center; justify-content: center;
+            flex-direction: column; gap: 20px;
+        }
+        .game-over.hidden { display: none; }
+        button.restart {
+            padding: 15px 40px; font-size: 20px;
+            background: #ff6b6b; color: white;
+            border: none; border-radius: 30px;
+            cursor: pointer; margin-top: 20px;
+        }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <!-- HUD -->
+        <div id="ui-layer">
+            <div class="hud-panel energy-bar">
+                <span style="color:#ff6b6b">⚡ Energy:</span><span id="energy-val">50/100</span>
+                <div style="background:rgba(255,255,255,0.3); height:8px; border-radius:4px; margin-top:6px;"><div id="energy-bar" style="width:50%; background:#ff6b6b; height:100%; border-radius:4px;"></div></div>
+            </div>
+            <div class="hud-panel" style="position:absolute; top:20px; right:30px">
+                <span id="wave-info">Wave 0</span> | <span id="lives-display">❤️❤️❤️❤️❤️❤️❤️❤️</span>
+                <div id="event-popup"></div>
+            </div>
+            <div class="hud-panel" style="position:absolute; bottom:30px; left:30px">
+                <strong>⚡ Energy:</strong> <span id="energy-text">50/100</span><br>
+                <small>Costs: Basic 20, Sniper 40, Cannon 60</small>
+            </div>
+            <div class="hud-panel tower-selection" id="tower-buttons">
+                <!-- Populated by JS -->
+            </div>
+            <div class="meter-container" id="chaos-meter">
+                <strong>🔥 CHAOS METER</strong><br>
+                <small style="color:#ff6b6b; font-size:12px;">Overcharge Buff Active!</small>
+                <div id="chaos-fill"></div>
+            </div>
+        </div>
+
+        <!-- Game Over Screen -->
+        <div class="game-over hidden" id="game-over-screen">
+            <h1 id="end-title">GAME OVER</h1>
+            <p id="end-reason">You survived all waves!</p>
+            <button class="restart" onclick="location.reload()">Play Again</button>
+        </div>
+
+        <!-- Start Button -->
+        <button class="start-btn hidden" id="start-wave-btn">START WAVE 1</button>
+    </div>
+
+    <script>
+        // ==================== CONFIGURATION ====================
+        const CONFIG = {
+            MAP_WIDTH: 40,
+            MAP_HEIGHT: 20,
+            TILE_SIZE: 36, // Slightly larger for better visuals
+            PATH_COLOR: '#4b5d6a',
+            GRASS_COLOR: '#1e8449',
+            BASE_ENERGY: 100,
+            BASE_LIVES: 8,
+            TOTAL_WAVES: 20
+        };
+
+        const TOWER_TYPES = {
+            BASIC: { name: 'Basic Tower', cost: 20, damage: 5, range: 7, color: '#ff6b6b', icon: '🔵' },
+            SNIPER: { name: 'Sniper', cost: 40, damage: 15, range: 18, color: '#4ecdc4', icon: '🎯' },
+            CANNON: { name: 'Cannon', cost: 60, damage: 2, area: 4, fireRate: 30, color: '#ffe66d', icon: '💥' }
+        };
+
+        // ==================== GAME STATE ====================
+        let gameState = {
+            energy: CONFIG.BASE_ENERGY,
+            lives: CONFIG.BASE_LIVES,
+            wave: 1,
+            towers: [],
+            enemies: [],
+            projectiles: [],
+            particles: [],
+            gameOver: false
+        };
+
+        let camera, scene, renderer;
+        let pathOptions = {};
+        let currentPathIndex = 0;
+        const pathSegments = [];
+
+        // ==================== INITIALIZATION ====================
+        function init() {
+            // Setup Three.js
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(CONFIG.MAP_WIDTH * CONFIG.TILE_SIZE / 2 + 50,
+                              CONFIG.MAP_HEIGHT * CONFIG.TILE_SIZE / 2 + 200,
+                              350);
+            camera.lookAt(scene.position);
+
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87CEEB);
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8);
+            directionalLight.position.set(100, 200, 50);
+            directionalLight.castShadow = true;
+            scene.add(directionalLight);
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.shadowMap.enabled = true;
+            document.getElementById('game-container').appendChild(renderer.domElement);
+
+            // Build map
+            buildMap();
+
+            // Create UI elements
+            createUI();
+
+            // Setup event listeners
+            setupEventListeners();
+
+            // Start game loop
+            animate();
+        }
+
+        function buildMap() {
+            const terrainGeo = new THREE.PlaneGeometry(CONFIG.MAP_WIDTH * CONFIG.TILE_SIZE,
+                                                         CONFIG.MAP_HEIGHT * CONFIG.TILE_SIZE);
+            terrainGeo.rotateX(-Math.PI / 2);
+
+            // Grass base layer
+            const grassMat = new THREE.MeshLambertMaterial({ color: CONFIG.GRASS_COLOR });
+            const terrain = new THREE.Mesh(terrainGeo, grassMat);
+            scene.add(terrain);
+
+            // Generate paths
+            generatePathOptions();
+
+            // Draw path segments
+            for (const route of Object.values(pathOptions)) {
+                for (let i = 0; i < route.length - 1; i++) {
+                    const p1 = route[i];
+                    const p2 = route[i + 1];
+
+                    // Line between centers
+                    const x1 = p1.x * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
+                    const y1 = p1.y * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
+                    const x2 = p2.x * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
+                    const y2 = p2.y * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
+
+                    // Path tile
+                    const pathGeo = new THREE.BoxGeometry(CONFIG.TILE_SIZE, 10, CONFIG.TILE_SIZE);
+                    const pathMat = new THREE.MeshLambertMaterial({ color: CONFIG.PATH_COLOR });
+                    const pathTile = new THREE.Mesh(pathGeo, pathMat);
+                    pathTile.position.set(x1 + 36 - CONFIG.TILE_SIZE/2, 5, y1 + 36 - CONFIG.TILE_SIZE/2);
+                    scene.add(pathTile);
+
+                    // Path line for visual clarity
+                    const lineGeo = new THREE.BufferGeometry().setFromPoints([
+                        new THREE.Vector3(x1, 10, y1),
+                        new THREE.Vector3(x2, 10, y2)
+                    ]);
+                    const lineMat = new THREE.LineBasicMaterial({ color: 0x6b7a89 });
+                    scene.add(new THREE.Line(lineGeo, lineMat));
+                }
+            }
+        }
+
+        function generatePathOptions() {
+            // Alternate between two main path structures
+            const pathA = [
+                [1, 1], [4, 3], [8, 2], [12, 5], [16, 4], [20, 7],
+                [24, 5], [28, 8], [32, 6], [36, 9]
+            ];
+
+            const pathB = [
+                [1, 15], [4, 12], [8, 10], [12, 7], [16, 9], [20, 6],
+                [24, 8], [28, 4], [32, 5], [36, 2]
+            ];
+
+            // Add some variation by creating new paths every 6 waves
+            if ((gameState.wave - 1) % 6 === 0 && gameState.wave > 1) {
+                const offset = Math.floor((gameState.wave - 1) / 6);
+                pathOptions[`path_${offset}`] = [
+                    [1, 1],
+                    [3 + offset*2, 3 + offset%4],
+                    [7 + offset*3, 5 - offset%2],
+                    [12 + offset*4, 8 + (offset%3)*2],
+                    [17 + offset*5, 6 + offset%2],
+                    [23 + offset*6, 9 + offset%3],
+                    [29 + offset*7, 5 - offset%2],
+                    [35 + offset*8, 10 + offset%4]
+                ];
+            } else {
+                pathOptions[`path_${currentPathIndex}`] = 
+                    currentPathIndex % 2 === 0 ? pathA : pathB;
+            }
+
+            currentPathIndex++;
+        }
+
+        function createUI() {
+            // Tower buttons
+            const container = document.getElementById('tower-buttons');
+            Object.entries(TOWER_TYPES).forEach(([key, type]) => {
+                const btn = document.createElement('div');
+                btn.className = 'tower-btn';
+                btn.innerHTML = `
+                    <div class="tower-icon" style="font-size:24px">${type.icon}</div>
+                    <strong>${type.name}</strong><br>
+                    <small>⚡ ${type.cost}</small>
+                `;
+                if (gameState.energy < type.cost) btn.classList.add('disabled');
+                
+                btn.addEventListener('click', () => {
+                    document.querySelectorAll('.tower-btn').forEach(b => b.classList.remove('selected'));
+                    btn.classList.add('selected');
+                    gameState.selectedTower = key;
+                });
+                container.appendChild(btn);
+            });
+
+            // Start wave button
+            const startBtn = document.getElementById('start-wave-btn');
+            startBtn.addEventListener('click', () => {
+                if (gameState.wave > CONFIG.TOTAL_WAVES) {
+                    endGame(true);
+                    return;
+                }
+                startWave();
+            });
+        }
+
+        function setupEventListeners() {
+            window.addEventListener('resize', () => {
+                camera.aspect = window.innerWidth / window.innerHeight;
+                camera.updateProjectionMatrix();
+                renderer.setSize(window.innerWidth, window.innerHeight);
+            });
+
+            // Tower placement click handler
+            document.getElementById('game-container').addEventListener('click', (e) => {
+                if (!gameState.selectedTower || gameState.gameOver) return;
+
+                const rect = e.target.getBoundingClientRect();
+                const x = e.clientX - rect.left;
+                const y = e.clientY - rect.top;
+
+                // Convert screen coordinates to grid coordinates
+                const worldX = (x / rect.width) * CONFIG.MAP_WIDTH * CONFIG.TILE_SIZE;
+                const worldZ = (y / rect.height) * CONFIG.MAP_HEIGHT * CONFIG.TILE_SIZE;
+
+                const gridX = Math.floor(worldX / CONFIG.TILE_SIZE);
+                const gridZ = Math.floor(worldZ / CONFIG.TILE_SIZE);
+
+                // Check if valid placement
+                if (gridX < 0 || gridX >= CONFIG.MAP_WIDTH || 
+                    gridZ < 0 || gridZ >= CONFIG.MAP_HEIGHT) return;
+
+                const isPath = Object.values(pathOptions).some(route =>
+                    route.some(p => p.x === gridX && p.y === gridZ)
+                );
+                if (isPath) return; // Can't place on path
+
+                if (gameState.towers.some(t => t.gridX === gridX && t.gridZ === gridZ)) return;
+
+                const towerDef = TOWER_TYPES[gameState.selectedTower];
+                if (gameState.energy < towerDef.cost) {
+                    showEnergyPopup(e.clientX, e.clientY, -50);
+                    return;
+                }
+
+                // Place tower
+                gameState.energy -= towerDef.cost;
+                createTower(gridX, gridZ, gameState.selectedTower);
+                updateUI();
+            });
+        }
+
+        function createTower(gridX, gridZ, typeKey) {
+            const towerDef = TOWER_TYPES[typeKey];
+            
+            // Base structure
+            const geo = new THREE.BoxGeometry(CONFIG.TILE_SIZE * 0.8, CONFIG.TILE_SIZE * 0.9);
+            let mat;
+            if (typeKey === 'BASIC') {
+                mat = new THREE.MeshLambertMaterial({ color: towerDef.color });
+            } else if (typeKey === 'SNIPER') {
+                // Add scope detail
+                const baseGeo = new THREE.BoxGeometry(CONFIG.TILE_SIZE * 0.8, CONFIG.TILE_SIZE);
+                const mat1 = new THREE.MeshLambertMaterial({ color: towerDef.color });
+                mat1.side = THREE.DoubleSide;
+                const scopeGeo = new THREE.CylinderGeometry(2, 2, CONFIG.TILE_SIZE / 2);
+                scopeGeo.rotateZ(Math.PI / 2);
+                const scopeMat = new THREE.MeshLambertMaterial({ color: '#333' });
+                mat = [mat1, scopeMat];
+            } else {
+                // Cannon with barrel
+                const baseGeo = new THREE.BoxGeometry(CONFIG.TILE_SIZE * 0.8, CONFIG.TILE_SIZE);
+                const mat1 = new THREE.MeshLambertMaterial({ color: towerDef.color });
+                mat1.side = THREE.DoubleSide;
+                const barrelGeo = new THREE.CylinderGeometry(3, 3, CONFIG.TILE_SIZE / 2);
+                barrelGeo.rotateZ(Math.PI / 2);
+                const barrelMat = new THREE.MeshLambertMaterial({ color: '#5d4037' });
+                mat = [mat1, barrelMat];
+            }
+
+            const meshGroup = new THREE.Group();
+            if (Array.isArray(mat)) {
+                mat.forEach((m, i) => {
+                    const msh = new THREE.Mesh(geo, m);
+                    msh.castShadow = true;
+                    msh.receiveShadow = true;
+                    meshGroup.add(msh);
+                });
+            } else {
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.castShadow = true;
+                mesh.receiveShadow = true;
+                meshGroup.add(mesh);
+            }
+
+            // Position at tile center + small offset so it sits in the tile
+            meshGroup.position.set(
+                gridX * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2,
+                10,
+                gridZ * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2
+            );
+
+            scene.add(meshGroup);
+
+            gameState.towers.push({
+                mesh: meshGroup,
+                gridX: gridX,
+                gridZ: gridZ,
+                damageMult: 1.0, // For tower buffs
+                typeKey: typeKey,
+                fireRate: TOWER_TYPES[typeKey].fireRate || 60, // frames between shots
+                lastFired: 0
+            });
+
+            updateUI();
+        }
+
+        function spawnEnemy(type, variant, waveNum) {
+            const speed = 0.15 + (waveNum * 0.02); // Gets faster each wave
+            let health; let damage;
+
+            switch(type) {
+                case 'basic':
+                    health = 30 + (waveNum * 5);
+                    damage = 2 + Math.floor(waveNum / 3);
+                    break;
+                case 'heavy':
+                    health = 80 + (waveNum * 10);
+                    damage = 4 + Math.floor(waveNum / 2);
+                    speed *= 0.7; // Slower
+                    break;
+                case 'fast':
+                    health = 20 + waveNum;
+                    damage = 2;
+                    speed *= 1.5; // Faster
+                    break;
+                default:
+                    return null;
+            }
+
+            if (!variant) variant = Math.random() < 0.3 ? 'red' : 'green';
+
+            const geo = new THREE.SphereGeometry(8, 16, 16);
+            let color = variant === 'red' ? '#ff6b6b' : '#4ecdc4';
+            
+            // Boss enemies every 5 waves
+            if (waveNum % 5 === 0) {
+                geo.scale.set(2.5, 2.5, 2.5);
+                color = '#ff6b6b'; // Red boss
+                health *= 3;
+                damage *= 2;
+            }
+
+            const mat = new THREE.MeshLambertMaterial({ 
+                color: color,
+                emissive: color,
+                emissiveIntensity: 0.1
+            });
+
+            // Spawn at path start
+            let startPos;
+            if (waveNum === 1) {
+                // First wave uses pathA by default
+                startPos = pathOptions.path_A && pathOptions.path_A.length > 0 ? 
+                    pathOptions.path_A : 
+                    [[1,2], [4,5], [8,6], [12,9], [16,7], [20,10]];
+            } else if (waveNum % 2 === 0) {
+                // Even waves use pathB
+                startPos = pathOptions.path_B && pathOptions.path_B.length > 0 ?
+                    pathOptions.path_B :
+                    [[1,15], [4,12], [8,10], [12,7], [16,9], [20,6]];
+            } else {
+                // Odd waves after first use alternate paths
+                const offset = Math.floor((waveNum - 3) / 2);
+                const newPath = [
+                    [1, 1 + offset*2],
+                    [4 + offset, 5 + offset%4],
+                    [8 + offset*2, 6 - offset%2],
+                    [12 + offset*3, 9 + (offset%3)*2],
+                    [17 + offset*4, 7 + offset%2],
+                    [23 + offset*5, 10 + offset%3]
+                ];
+                startPos = newPath.length > 0 ? newPath : [[1,2], [8,6]];
+            }
+
+            const enemy = {
+                mesh: new THREE.Mesh(geo, mat),
+                position: new THREE.Vector3(
+                    startPos[0].x * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2,
+                    15,
+                    startPos[0].y * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2
+                ),
+                target: new THREE.Vector3(startPos[startPos.length - 1].x * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2, 15, startPos[startPos.length - 1].y * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2),
+                speed: speed,
+                health: health,
+                maxHealth: health,
+                damage: damage,
+                variant: variant,
+                id: Math.random(), // Simple ID for effects
+                type: type
+            };
+
+            scene.add(enemy.mesh);
+            return enemy;
+        }
+
+        function updateEnemies(delta) {
+            const currentPath = Object.values(pathOptions).find(r => r[0].y === 2) || [];
+
+            // Update positions
+            gameState.enemies.forEach((enemy, index) => {
+                if (!enemy.mesh.parent && !gameState.gameOver) return; // Already removed
+
+                const dir = enemy.target.clone().sub(enemy.position);
+                dir.normalize();
+                const moveStep = dir.multiplyScalar(enemy.speed * delta * 60); // Normalize by time
+
+                enemy.position.add(moveStep);
+                enemy.mesh.position.copy(enemy.position);
+
+                // Check if reached end (game over)
+                if (enemy.position.distanceTo(enemy.target) < CONFIG.TILE_SIZE / 3) {
+                    removeEnemy(index, true);
+                    gameState.lives--;
+                    updateUI();
+                    if (gameState.lives <= 0) {
+                        endGame(false);
+                    }
+                }
+            });
+
+            // Cleanup dead enemies
+            gameState.enemies = gameState.enemies.filter(e => e.mesh.parent && e.health > 0);
+        }
+
+        function removeEnemy(index, reachedEnd = false) {
+            const enemy = gameState.enemies[index];
+            if (!enemy || !enemy.mesh) return;
+
+            scene.remove(enemy.mesh);
+            
+            // Create explosion effect
+            createExplosion(
+                enemy.position.x,
+                enemy.position.y - 15,
+                enemy.position.z,
+                reachedEnd ? 3 : 1 // Larger if boss or reached end
+            );
+
+            gameState.enemies.splice(index, 1);
+        }
+
+        function createProjectile(towerIndex) {
+            const tower = gameState.towers[towerIndex];
+            const typeKey = tower.typeKey;
+            
+            // Create projectile at tower position
+            const geo = new THREE.SphereGeometry(2, 8, 8);
+            let color;
+            
+            switch(typeKey) {
+                case 'BASIC':
+                    color = '#ff6b6b';
+                    break;
+                case 'SNIPER':
+                    // Instant hit (no projectile)
+                    fireSniper(tower); // Call special function
+                    return;
+                case 'CANNON':
+                    color = '#ffe66d';
+                    geo.scale.set(3, 1.5, 3);
+                    break;
+            }
+
+            const mat = new THREE.MeshLambertMaterial({ color: color });
+            const projectileMesh = new THREE.Mesh(geo, mat);
+            
+            // Start slightly in front of tower
+            const startPos = tower.mesh.position.clone();
+            startPos.y += 12;
+
+            projectileMesh.position.copy(startPos);
+            scene.add(projectileMesh);
+
+            gameState.projectiles.push({
+                mesh: projectileMesh,
+                position: startPos,
+                target: null, // Cannon hits area, others hit specific enemy
+                damage: TOWER_TYPES[typeKey].damage * tower.damageMult,
+                fireRate: typeKey === 'CANNON' ? (TOWER_TYPES[typeKey].fireRate || 30) : 60,
+                lastFired: Date.now(),
+                gridX: tower.gridX,
+                gridZ: tower.gridZ
+            });
+        }
+
+        function updateProjectiles(delta) {
+            gameState.projectiles = gameState.projectiles.filter((proj, index) => {
+                if (!proj.mesh.parent && !gameState.gameOver) return false;
+
+                // Check fire rate
+                const now = Date.now();
+                if (now - proj.lastFired < proj.fireRate * 16) {
+                    return true; // Skip update this frame
+                }
+                proj.lastFired = now;
+
+                // Cannon: check area damage on path tiles
+                if (proj.gridX && proj.gridZ) {
+                    const xMin = Math.floor(proj.position.x / CONFIG.TILE_SIZE);
+                    const yMin = Math.floor(proj.position.y / CONFIG.TILE_SIZE);
+                    const xMax = xMin + 1;
+                    const yMax = yMin + 1;
+
+                    // Check all path points in this area
+                    for (const route of Object.values(pathOptions)) {
+                        for (let i = 0; i < route.length - 1; i++) {
+                            if (Math.floor(route[i].x) === xMin && Math.floor(route[i].y) === yMin) {
+                                // Hit! Create explosion
+                                createExplosion(
+                                    proj.position.x,
+                                    proj.position.y,
+                                    proj.position.z,
+                                    1.5
+                                );
+                                scene.remove(proj.mesh);
+                                gameState.projectiles.splice(index, 1);
+                                return false;
+                            }
+                        }
+                    }
+                } else {
+                    // Regular projectile: move toward nearest enemy or path end
+                    let target = null;
+                    
+                    if (gameState.enemies.length > 0) {
+                        // Find closest enemy in front of tower
+                        const myX = proj.position.x;
+                        const myY = proj.position.y;
+                        const closest = gameState.enemies.reduce((best, enemy) => {
+                            const dx = enemy.position.x - myX;
+                            const dy = enemy.position.y - myY;
+                            // Only target enemies slightly in front (not behind)
+                            if (dx * dy < 0) return best; // Different sides of tower
+                            
+                            const dist = Math.sqrt(dx*dx + dy*dy);
+                            if (!best || dist < best.dist && dx > -10) { // Only front hemisphere
+                                best = { enemy, dist };
+                            }
+                            return best;
+                        }, null);
+
+                        if (closest) {
+                            target = closest.enemy.position.clone();
+                            const dir = new THREE.Vector3().subVectors(target, proj.position).normalize();
+                            
+                            // Move projectile toward enemy but don't overshoot by much
+                            const stepSize = 15; // Move a bit each frame
+                            proj.position.add(dir.multiplyScalar(stepSize));
+                        }
+                    } else {
+                        // No enemies: move to path end or disappear after distance
+                        const currentPath = Object.values(pathOptions).find(r => r[0].y === 2) || [];
+                        if (currentPath && currentPath.length > 1) {
+                            const start = currentPath[0];
+                            const end = currentPath[currentPath.length - 1];
+                            
+                            // Move along path direction
+                            const dx = end.x - start.x;
+                            const dy = end.y - start.y;
+                            const dist = Math.sqrt(dx*dx + dy*dy);
+                            const dir = new THREE.Vector3(dx/dist, 0, dy/dist).multiplyScalar(10);
+                            proj.position.add(dir);
+                        }
+                    }
+
+                }
+
+                // Cleanup if too far or hit enemy
+                if (proj.position.distanceTo(proj.mesh.position) > 5 || 
+                    !proj.mesh.parent) {
+                    scene.remove(proj.mesh);
+                    gameState.projectiles.splice(index, 1);
+                    return false;
+                }
+
+                return true;
+            });
+        }
+
+        function fireSniper(tower) {
+            // Instant hit - check enemies in range
+            const range = TOWER_TYPES.SNIPER.range * CONFIG.TILE_SIZE;
+            let hit = false;
+
+            for (let i = gameState.enemies.length - 1; i >= 0; i--) {
+                const enemy = gameState.enemies[i];
+                if (!enemy.mesh.parent) continue;
+
+                const dist = tower.gridX - enemy.position.x;
+                const dy = tower.gridZ - enemy.position.y;
+                
+                // Check if in front and in range (simple 2D check)
+                if ((dist * dy <= 0) && Math.sqrt(dist*dist + dy*dy) < range) {
+                    removeEnemy(i);
+                    showEnergyPopup(
+                        enemy.position.x * CONFIG.TILE_SIZE,
+                        enemy.position.y * CONFIG.TILE_SIZE,
+                        50
+                    );
+                    hit = true;
+                }
+            }
+
+            if (!hit) {
+                // Miss - create projectile trail that fades out
+                const geo = new THREE.SphereGeometry(2);
+                const mat = new THREE.MeshBasicMaterial({ color: TOWER_TYPES.SNIPER.color, transparent: true });
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.position.copy(tower.mesh.position).y += 15;
+                scene.add(mesh);
+
+                // Move and fade
+                let alpha = 1;
+                const interval = setInterval(() => {
+                    if (!mesh.parent) { clearInterval(interval); return; }
+                    mesh.material.opacity -= 0.1;
+                    mesh.position.x += 20 * Math.cos(Date.now() / 500);
+                    mesh.position.y += 20 * Math.sin(Date.now() / 500);
+                    if (mesh.material.opacity <= 0) {
+                        clearInterval(interval);
+                        scene.remove(mesh);
+                    }
+                }, 16);
+            }
+        }
+
+        function createExplosion(x, y, z, intensity = 1) {
+            const radius = 20 * intensity;
+            const particleCount = 15 * intensity;
+            
+            for (let i = 0; i < particleCount; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = Math.random() * 2 + 0.5;
+                const vx = Math.cos(angle) * speed;
+                const vz = Math.sin(angle) * speed;
+                
+                debrisParticles.push({
+                    x: x,
+                    y: y - 15, // Ground level
+                    z: z,
+                    vx: vx,
+                    vz: vz,
+                    vy: Math.random() * 3 + 2,
+                    life: 60 + intensity * 20,
+                    color: `hsl(${Math.random() * 40 + 15}, 80%, 60%)`,
+                    size: radius / particleCount
+                });
+            }
+        }
+
+        function updateTerrain(delta) {
+            // Add subtle ground movement for depth effect
+            const time = Date.now() * 0.001;
+            pathSegments.forEach((segment, i) => {
+                segment.mesh.position.y += Math.sin(time + i * 0.5) * 0.02;
+            });
+        }
+
+        function updateUI() {
+            document.getElementById('energy-val').textContent = `${Math.floor(gameState.energy)}/${CONFIG.BASE_ENERGY}`;
+            document.getElementById('energy-bar').style.width = `${(gameState.energy / CONFIG.BASE_ENERGY) * 100}%`;
+            
+            const hearts = '❤️'.repeat(Math.min(gameState.lives, CONFIG.BASE_LIVES));
+            document.getElementById('lives-display').textContent = hearts;
+
+            // Update tower button availability
+            Object.entries(TOWER_TYPES).forEach(([key, type]) => {
+                const btn = document.querySelector(`[data-tower="${key}"]`);
+                if (!btn) return;
+                if (gameState.energy < type.cost) {
+                    btn.classList.add('disabled');
+                } else {
+                    btn.classList.remove('disabled');
+                }
+            });
+
+            // Update chaos meter
+            updateChaosMeter(16);
+        }
+
+        function showEnergyPopup(x, y, amount) {
+            const div = document.createElement('div');
+            div.className = 'energy-popup';
+            div.innerHTML = `+${amount}⚡`;
+            div.style.left = `${x}px`;
+            div.style.top = `${y}px`;
+            document.body.appendChild(div);
+
+            // Cleanup after animation
+            setTimeout(() => div.remove(), 1000);
+        }
+
+        function updateChaosMeter(delta) {
+            const baseGain = 0.1 * delta; // ~6 per second normally
+            const currentRate = baseGain;
+            
+            let newChaos = gameState.chaos || 0 + currentRate;
+            
+            // Update UI
+            const fill = document.getElementById('chaos-fill');
+            const percent = Math.min(100, (newChaos / 25) * 100);
+            fill.style.width = `${percent}%`;
+        }
+
+        function startWave() {
+            if (gameState.wave > CONFIG.TOTAL_WAVES) {
+                endGame(true);
+                return;
+            }
+
+            // Select which path to use for this wave
+            selectPathForWave(gameState.wave);
+            
+            currentWaveNum = gameState.wave;
+            currentWave = WAVES[gameState.wave - 1];
+            waveEnemies = [...currentWave.enemies];
+            spawnTimer = 0;
+            gameState.waveActive = true;
+            
+            document.getElementById('start-wave-btn').classList.add('hidden');
+            updateUI();
+        }
+
+        function checkWaveCompletion() {
+            if (!gameState.waveActive) return;
+
+            spawnTimer++;
+            
+            if (waveEnemies.length > 0 && spawnTimer >= currentWave.spawnDelay / 16) {
+                const enemyData = waveEnemies.shift();
+                const enemy = spawnEnemy(enemyData.type, enemyData.variant, currentWaveNum);
+                spawnTimer = 0;
+            }
+
+            if (waveEnemies.length === 0 && gameState.enemies.length === 0) {
+                waveComplete();
+            }
+        }
+
+        function waveComplete() {
+            // Chance to trigger event at wave end
+            if (Math.random() < 0.35) { // 35% chance
+                showEventPopup();
+            }
+
+            gameState.waveActive = false;
+            gameState.wave++;
+            
+            updateUI();
+            
+            if (gameState.wave > CONFIG.TOTAL_WAVES) {
+                endGame(true);
+            }
+        }
+
+        function showEventPopup() {
+            const effects = [
+                { type: 'energy', amount: 50, text: '+50 Energy' },
+                { type: 'lives', amount: 2, text: '+2 Lives' },
+                { type: 'buff', amount: 1.5, text: '+50% Damage (60s)' }
+            ];
+
+            const effect = effects[Math.floor(Math.random() * effects.length)];
+            const popup = document.getElementById('event-popup');
+            
+            if (effect.type === 'buff') {
+                gameState.towers.forEach(t => t.damageMult *= 1.5);
+            }
+
+            popup.innerHTML = `<strong>EVENT!</strong><br>${effect.text}`;
+            popup.classList.add('show');
+            setTimeout(() => popup.classList.remove('show'), 3000);
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+
+            if (gameState.gameOver) return;
+
+            const delta = 16; // Approximate
+
+            updateEnemies(delta);
+            updateProjectiles(delta);
+            createProjectileTrail();
+            updateTerrain(delta);
+            updateUI();
+
+            renderer.render(scene, camera);
+        }
+
+        function endGame(victory) {
+            gameState.gameOver = true;
+            const screen = document.getElementById('game-over-screen');
+            screen.classList.remove('hidden');
+            document.getElementById('end-title').textContent = victory ? 'VICTORY!' : 'GAME OVER';
+            document.getElementById('end-reason').textContent = 
+                victory ? `You survived all ${CONFIG.TOTAL_WAVES} waves!` : 'Enemies reached the end.';
+        }
+
+        // ==================== GAME LOOP VARIABLES ====================
+        let currentWaveNum = 0;
+        let currentWave = null;
+        let waveEnemies = [];
+        let spawnTimer = 0;
+        
+        // ==================== VISUAL EFFECTS ====================
+        function createProjectileTrail() {
+            if (gameState.projectiles.length === 0) return;
+
+            // Create particle trail for each projectile
+            gameState.projectiles.forEach((proj, idx) => {
+                if (!proj.mesh.parent && !gameState.gameOver) return;
+
+                // Add a small trail sphere behind projectile
+                const trailGeo = new THREE.SphereGeometry(1.5);
+                const trailMat = new THREE.MeshBasicMaterial({
+                    color: TOWER_TYPES[proj.gridX ? 'BASIC' : (proj.typeKey || 'CANNON')].color,
+                    transparent: true,
+                    opacity: 0.6
+                });
+
+                const trailMesh = new THREE.Mesh(trailGeo, trailMat);
+                trailMesh.position.copy(proj.position).sub(new THREE.Vector3(5, -5, 5));
+                scene.add(trailMesh);
+
+                // Store cleanup info
+                proj.trails.push({ mesh: trailMesh });
+            });
+
+            // Cleanup old trails (limit to last 20 frames)
+            const maxTrails = gameState.projectiles.length * 3;
+            let totalTrails = 0;
+            
+            gameState.projectiles.forEach((proj, idx) => {
+                if (!proj.trails) proj.trails = [];
+                while (proj.trails.length > maxTrails) {
+                    const oldTrail = proj.trails.shift();
+                    if (oldTrail && oldTrail.mesh.parent) {
+                        scene.remove(oldTrail.mesh);
+                        oldTrail.mesh.geometry.dispose();
+                        oldTrail.mesh.material.dispose();
+                    }
+                }
+            });
+        }
+
+        function removeEnemy(index, reachedEnd = false) {
+            const enemy = gameState.enemies[index];
+            if (!enemy || !enemy.mesh) return;
+
+            scene.remove(enemy.mesh);
+            createExplosion(
+                enemy.position.x,
+                enemy.position.y - 15,
+                enemy.position.z,
+                reachedEnd ? 3 : 1
+            );
+
+            gameState.enemies.splice(index, 1);
+        }
+
+        function updateChaosMeter(delta) {
+            // Simple chaos accumulation
+            const baseGain = 0.1 * delta;
+            let newChaos = (gameState.chaos || 0) + baseGain;
+            
+            const fill = document.getElementById('chaos-fill');
+            const percent = Math.min(100, (newChaos / 25) * 100);
+            fill.style.width = `${percent}%`;
+        }
+
+        function showEventPopup() {
+            // Already implemented above
+        }
+    </script>
+</body>
+</html>
