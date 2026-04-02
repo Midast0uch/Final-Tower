@@ -1643,6 +1643,20 @@
 
             scene.add(meshGroup);
 
+            // Create range indicator (hidden by default)
+            const range = TOWER_TYPES[typeKey].range * CONFIG.TILE_SIZE;
+            const rangeGeo = new THREE.RingGeometry(range - 2, range, 32);
+            const rangeMat = new THREE.MeshBasicMaterial({ 
+                color: TOWER_TYPES[typeKey].color,
+                transparent: true,
+                opacity: 0,
+                side: THREE.DoubleSide
+            });
+            const rangeIndicator = new THREE.Mesh(rangeGeo, rangeMat);
+            rangeIndicator.rotation.x = -Math.PI / 2;
+            rangeIndicator.position.set(tileCenterX, 0.5, tileCenterZ);
+            scene.add(rangeIndicator);
+
             gameState.towers.push({
                 mesh: meshGroup,
                 gridX: gridX,
@@ -1650,7 +1664,8 @@
                 damageMult: 1.0,
                 typeKey: typeKey,
                 fireRate: TOWER_TYPES[typeKey].fireRate || 60,
-                lastFired: 0
+                lastFired: 0,
+                rangeIndicator: rangeIndicator
             });
 
             // Mark that towers have been placed
@@ -1872,6 +1887,48 @@
                 enemy.healthBar.position.y = 20 + Math.sin(Date.now() * 0.005) * 1;
             });
         }
+        
+        // Tower range indicator on mouse hover
+        let hoveredTower = null;
+        let mousePos = { x: 0, z: 0 };
+        
+        function updateTowerRangeIndicators() {
+            // Check if mouse is over any tower
+            const raycaster = new THREE.Raycaster();
+            const mouse = new THREE.Vector2(
+                (mousePos.x / window.innerWidth) * 2 - 1,
+                -(mousePos.z / window.innerHeight) * 2 + 1
+            );
+            raycaster.setFromCamera(mouse, camera);
+            
+            const towerMeshes = gameState.towers.map(t => t.mesh);
+            const intersects = raycaster.intersectObjects(towerMeshes, true);
+            
+            // Hide all first
+            gameState.towers.forEach(tower => {
+                if (tower.rangeIndicator) {
+                    tower.rangeIndicator.material.opacity = 0;
+                }
+            });
+            
+            // Show hovered tower range
+            if (intersects.length > 0) {
+                const hitMesh = intersects[0].object;
+                const tower = gameState.towers.find(t => t.mesh === hitMesh || t.mesh.children.includes(hitMesh));
+                if (tower && tower.rangeIndicator) {
+                    tower.rangeIndicator.material.opacity = 0.3;
+                    // Pulse effect
+                    const pulse = Math.sin(Date.now() * 0.005) * 0.1 + 0.3;
+                    tower.rangeIndicator.material.opacity = pulse;
+                }
+            }
+        }
+        
+        // Track mouse position for range indicators
+        document.addEventListener('mousemove', (e) => {
+            mousePos.x = e.clientX;
+            mousePos.z = e.clientY;
+        });
 
         function updateEnemies(delta) {
             gameState.enemies.forEach((enemy, index) => {
@@ -2559,7 +2616,10 @@
                     }
                 });
             }
-
+            
+            // Tower range indicator hover
+            updateTowerRangeIndicators();
+            
             checkWaveCompletion();
             updateEnemies(delta);
             updateProjectiles(delta);
