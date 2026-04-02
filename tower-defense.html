@@ -262,7 +262,9 @@
             display: flex; align-items: center; justify-content: center;
             flex-direction: column; gap: 20px;
         }
+        .hidden { display: none !important; }
         .game-over.hidden { display: none; }
+        #login-screen, #main-menu, #game-over-screen { pointer-events: auto; }
         button.restart {
             padding: 15px 40px; font-size: 20px;
             background: #ff6b6b; color: white;
@@ -295,62 +297,62 @@
 </head>
 <body>
     <div id="game-container">
-        <!-- HUD -->
-        <div id="ui-layer">
-            <div class="energy-ring-container">
+        <!-- Login Screen -->
+        <div id="login-screen" style="position:absolute; top:0; left:0; right:0; bottom:0; background:linear-gradient(135deg, #1a1a2e 0%, #16213e 50%, #0f3460 100%); display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:2000;">
+            <h1 style="font-size:48px; color:#fff; margin-bottom:10px; text-shadow:0 0 20px #00d4ff;">FINAL TOWER</h1>
+            <p style="color:#aaa; margin-bottom:30px;">Endless Tower Defense</p>
+            <input type="text" id="username-input" placeholder="Enter your name" style="padding:15px 25px; font-size:18px; border-radius:25px; border:2px solid #00d4ff; background:rgba(0,0,0,0.5); color:#fff; width:250px; text-align:center; margin-bottom:20px;">
+            <button id="login-btn" style="padding:15px 50px; font-size:20px; font-weight:bold; background:linear-gradient(135deg, #00d4ff, #0099cc); color:#fff; border:none; border-radius:25px; cursor:pointer; box-shadow:0 5px 20px rgba(0,212,255,0.4);">START GAME</button>
+        </div>
+        
+        <!-- Main Menu (hidden initially) -->
+        <div id="main-menu" class="hidden" style="position:absolute; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.85); display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:1500;">
+            <h1 style="font-size:56px; color:#00d4ff; margin-bottom:10px;">FINAL TOWER</h1>
+            <p id="welcome-text" style="color:#aaa; font-size:20px; margin-bottom:40px;"></p>
+            <button id="play-btn" style="padding:18px 60px; font-size:22px; font-weight:bold; background:linear-gradient(135deg, #51cf66, #40c057); color:#fff; border:none; border-radius:30px; cursor:pointer; margin-bottom:15px; box-shadow:0 5px 20px rgba(81,207,102,0.4);">PLAY</button>
+            <button id="leaderboard-btn" style="padding:12px 40px; font-size:16px; background:rgba(255,255,255,0.1); color:#fff; border:1px solid rgba(255,255,255,0.3); border-radius:20px; cursor:pointer; margin-bottom:10px;">LEADERBOARD</button>
+            <button id="achievements-btn" style="padding:12px 40px; font-size:16px; background:rgba(255,255,255,0.1); color:#fff; border:1px solid rgba(255,255,255,0.3); border-radius:20px; cursor:pointer;">ACHIEVEMENTS</button>
+        </div>
+        
+        <!-- Game UI Layer (hidden initially) -->
+        <div id="game-ui" class="hidden">
+            <!-- Energy Ring - Top Center -->
+            <div class="energy-ring-container" style="position:absolute; top:20px; left:50%; transform:translateX(-50%);">
                 <div class="energy-ring">
-                    <svg width="120" height="120" viewBox="0 0 120 120">
-                        <circle class="energy-ring-bg" cx="60" cy="60" r="52"></circle>
-                        <circle class="energy-ring-fill" cx="60" cy="60" r="52" 
-                            stroke-dasharray="327" stroke-dashoffset="327" id="energy-ring-progress"></circle>
+                    <svg width="100" height="100" viewBox="0 0 120 120">
+                        <circle class="energy-ring-bg" cx="60" cy="60" r="52" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="8"></circle>
+                        <circle class="energy-ring-fill" cx="60" cy="60" r="52" fill="none" stroke="#ff6b6b" stroke-width="8" stroke-linecap="round" stroke-dasharray="327" stroke-dashoffset="327" id="energy-ring-progress"></circle>
                     </svg>
-                    <div class="energy-ring-text">
-                        <div class="value" id="energy-val">100</div>
-                        <div class="label">Energy</div>
+                    <div class="energy-ring-text" style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); text-align:center;">
+                        <div class="value" id="energy-val" style="font-size:24px; font-weight:800; color:#fff;">100</div>
+                        <div class="label" style="font-size:10px; color:rgba(255,255,255,0.7);">ENERGY</div>
                     </div>
                 </div>
             </div>
-            <div class="hud-panel" style="position:absolute; top:20px; right:30px">
-                <div class="wave-timer" id="wave-timer" style="display:none;">
-                    <span style="color:#ffd43b; font-size:18px;">⏱️ <span id="wave-timer-val">0</span>s</span>
+            
+            <!-- Top Right - Lives & Wave -->
+            <div class="hud-panel" style="position:absolute; top:20px; right:20px; min-width:150px;">
+                <div class="lives-container" id="lives-display" style="display:flex; gap:3px; flex-wrap:wrap; margin-bottom:8px;"></div>
+                <div class="wave-progress" style="background:rgba(255,255,255,0.1); border-radius:4px; height:6px; margin-bottom:8px;">
+                    <div class="wave-progress-fill" id="wave-progress-fill" style="height:100%; background:linear-gradient(90deg,#51cf66,#40c057); width:0%; border-radius:4px;"></div>
                 </div>
-                <div class="lives-container" id="lives-display"></div>
-                <div class="wave-progress"><div class="wave-progress-fill" id="wave-progress-fill" style="width:0%"></div></div>
-                <div style="margin-top:8px; font-size:14px;"><span id="wave-info">Wave 1</span></div>
-                <div id="event-popup"></div>
+                <div id="wave-info" style="font-size:16px; font-weight:bold; color:#fff;">Wave 1</div>
+                <div id="wave-timer" style="color:#ffd43b; font-size:18px; font-weight:bold; margin-top:5px;"></div>
             </div>
-            <div class="hud-panel" style="position:absolute; bottom:30px; left:30px">
-                <small>Costs: Basic 20 | Sniper 40 | Cannon 60</small>
-            </div>
-            <div class="hud-panel tower-selection" id="tower-buttons"></div>
+            
+            <!-- Bottom - Tower Selection -->
+            <div class="hud-panel tower-selection" id="tower-buttons" style="position:absolute; bottom:20px; left:50%; transform:translateX(-50%); display:flex; gap:12px; background:rgba(30,30,50,0.9); padding:15px 25px; border-radius:20px;"></div>
         </div>
-            <div class="hud-panel" style="position:absolute; top:20px; right:30px">
-                <span id="wave-info">Wave 0</span> | <span id="lives-display">❤️❤️❤️❤️❤️❤️❤️❤️</span>
-                <div id="event-popup"></div>
-            </div>
-            <div class="hud-panel" style="position:absolute; bottom:30px; left:30px">
-                <strong>⚡ Energy:</strong> <span id="energy-text">50/100</span><br>
-                <small>Costs: Basic 20, Sniper 40, Cannon 60</small>
-            </div>
-            <div class="hud-panel tower-selection" id="tower-buttons">
-                <!-- Populated by JS -->
-            </div>
-            <div class="meter-container" id="chaos-meter">
-                <strong>🔥 CHAOS METER</strong><br>
-                <small style="color:#ff6b6b; font-size:12px;">Overcharge Buff Active!</small>
-                <div id="chaos-fill"></div>
-            </div>
-        </div>
-
+        
         <!-- Game Over Screen -->
-        <div class="game-over hidden" id="game-over-screen">
-            <h1 id="end-title">GAME OVER</h1>
-            <p id="end-reason">You survived all waves!</p>
-            <button class="restart" onclick="location.reload()">Play Again</button>
+        <div class="game-over hidden" id="game-over-screen" style="position:absolute; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.9); display:flex; flex-direction:column; align-items:center; justify-content:center; z-index:2000;">
+            <h1 id="end-title" style="font-size:56px; color:#ff6b6b; margin-bottom:10px;">GAME OVER</h1>
+            <p id="end-reason" style="color:#aaa; font-size:20px; margin-bottom:30px;"></p>
+            <button class="restart" onclick="location.reload()" style="padding:15px 40px; font-size:20px; background:#51cf66; color:#fff; border:none; border-radius:25px; cursor:pointer;">PLAY AGAIN</button>
         </div>
-
-        <!-- Start Button -->
-        <button class="start-btn" id="start-wave-btn">START GAME</button>
+        
+        <!-- Start Wave Button -->
+        <button class="start-btn" id="start-wave-btn" style="display:none; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); padding:20px 50px; font-size:24px; font-weight:bold; background:linear-gradient(135deg,#51cf66,#40c057); color:#fff; border:none; border-radius:30px; cursor:pointer; box-shadow:0 8px 30px rgba(81,207,102,0.5); z-index:1000;">START WAVE</button>
     </div>
 
     <script>
@@ -359,17 +361,37 @@
             MAP_WIDTH: 20,
             MAP_HEIGHT: 20,
             TILE_SIZE: 36,
-            PATH_COLOR: '#4b5d6a',
-            GRASS_COLOR: '#1e8449',
+            PATH_COLOR: '#556B2F',
+            TERRAIN_COLOR: '#8B4513',
             BASE_ENERGY: 100,
-            BASE_LIVES: 8,
-            TOTAL_WAVES: 20
+            BASE_LIVES: 20,
+            ENERGY_REGEN: 1,
+            MAX_ENERGY: 100,
+            PREPARATION_TIME: 60
         };
 
+        // Wave scaling formula
+        function calculateWaveDifficulty(waveNumber) {
+            const baseDifficulty = 10;
+            const waveFactor = Math.pow(1.15, waveNumber);
+            const bossFactor = waveNumber % 5 === 0 ? 2.5 : 1;
+            return Math.floor(baseDifficulty * waveFactor * bossFactor);
+        }
+
+        function calculateEnemyCount(waveNumber) {
+            return Math.min(40, 10 + Math.floor(waveNumber * 1.5));
+        }
+
+        function calculatePathLength(wave) {
+            return Math.min(30, 10 + Math.floor(wave * 1.2));
+        }
+
         const TOWER_TYPES = {
-            BASIC: { name: 'Basic Tower', cost: 20, damage: 5, range: 7, color: '#ff6b6b', icon: '🔵' },
-            SNIPER: { name: 'Sniper', cost: 40, damage: 15, range: 18, color: '#4ecdc4', icon: '🎯' },
-            CANNON: { name: 'Cannon', cost: 60, damage: 2, area: 4, fireRate: 30, color: '#ffe66d', icon: '💥' }
+            BASIC: { name: 'Basic Tower', cost: 20, damage: 5, range: 7, color: '#ff6b6b', icon: '🔵', fireRate: 60 },
+            SNIPER: { name: 'Sniper', cost: 40, damage: 15, range: 18, color: '#4ecdc4', icon: '🎯', fireRate: 120 },
+            CANNON: { name: 'Cannon', cost: 60, damage: 3, range: 6, area: 4, color: '#ffe66d', icon: '💥', fireRate: 90 },
+            TRAP: { name: 'Trap', cost: 35, damage: 30, range: 3, oneTime: true, color: '#ff8787', icon: '💣', fireRate: 999999 },
+            SLOW: { name: 'Slow', cost: 45, damage: 2, range: 8, slowFactor: 0.5, color: '#74c0fc', icon: '❄️', fireRate: 30 }
         };
 
         // ==================== GAME STATE ====================
@@ -377,142 +399,179 @@
             energy: CONFIG.BASE_ENERGY,
             lives: CONFIG.BASE_LIVES,
             wave: 1,
+            gamePhase: 'PREPARATION', // 'PREPARATION' | 'WAVE_ACTIVE' | 'GAME_OVER'
+            preparationTimer: CONFIG.PREPARATION_TIME,
             towers: [],
             enemies: [],
             projectiles: [],
             particles: [],
             gameOver: false,
             gameStarted: false,
-            placedTowers: false,
             selectedTower: null,
-            waveActive: false
+            waveActive: false,
+            pathGrid: [],
+            maxWaveReached: 0,
+            totalKills: 0,
+            pathChanges: 0,
+            bossesDefeated: 0
         };
 
 	let camera, scene, renderer;
 
-	const WAVES = [
-		{ spawnDelay: 1000, enemies: [
-			{ type: 'basic', variant: 'fast' },
-			{ type: 'cannon', variant: 'normal' }
-		]},
-		{ spawnDelay: 800, enemies: [
-			{ type: 'sniper', variant: 'slow' },
-			{ type: 'basic', variant: 'tanky' },
-			{ type: 'basic', variant: 'fast' }
-		]},
-		{ spawnDelay: 1200, enemies: [
-			{ type: 'cannon', variant: 'heavy' },
-			{ type: 'sniper', variant: 'normal' },
-			{ type: 'basic', variant: 'tanky' }
-		]},
-		{ spawnDelay: 900, enemies: [
-			{ type: 'basic', variant: 'fast' },
-			{ type: 'basic', variant: 'tanky' },
-			{ type: 'sniper', variant: 'slow' },
-			{ type: 'cannon', variant: 'normal' }
-		]},
-		{ spawnDelay: 2000, enemies: [
-			{ type: 'boss', variant: 'elite1' },
-			{ type: 'basic', variant: 'fast' }
-		]},
-		{ spawnDelay: 1000, enemies: [
-			{ type: 'sniper', variant: 'normal' },
-			{ type: 'cannon', variant: 'heavy' }
-		]},
-		{ spawnDelay: 800, enemies: [
-			{ type: 'basic', variant: 'tanky' },
-			{ type: 'basic', variant: 'fast' },
-			{ type: 'sniper', variant: 'slow' }
-		]},
-		{ spawnDelay: 900, enemies: [
-			{ type: 'cannon', variant: 'normal' },
-			{ type: 'cannon', variant: 'heavy' },
-			{ type: 'basic', variant: 'fast' }
-		]},
-		{ spawnDelay: 700, enemies: [
-			{ type: 'sniper', variant: 'slow' },
-			{ type: 'sniper', variant: 'normal' },
-			{ type: 'basic', variant: 'tanky' }
-		]},
-		{ spawnDelay: 1500, enemies: [
-			{ type: 'boss', variant: 'elite2' },
-			{ type: 'sniper', variant: 'normal' },
-			{ type: 'cannon', variant: 'heavy' }
-		]},
-		{ spawnDelay: 800, enemies: [
-			{ type: 'basic', variant: 'fast' },
-			{ type: 'basic', variant: 'tanky' },
-			{ type: 'cannon', variant: 'normal' }
-		]},
-		{ spawnDelay: 600, enemies: [
-			{ type: 'sniper', variant: 'slow' },
-			{ type: 'sniper', variant: 'normal' },
-			{ type: 'basic', variant: 'fast' }
-		]},
-		{ spawnDelay: 1000, enemies: [
-			{ type: 'cannon', variant: 'heavy' },
-			{ type: 'cannon', variant: 'normal' },
-			{ type: 'sniper', variant: 'slow' }
-		]},
-		{ spawnDelay: 700, enemies: [
-			{ type: 'basic', variant: 'tanky' },
-			{ type: 'basic', variant: 'fast' },
-			{ type: 'sniper', variant: 'normal' }
-		]},
-		{ spawnDelay: 2500, enemies: [
-			{ type: 'boss', variant: 'elite3' },
-			{ type: 'basic', variant: 'fast' },
-			{ type: 'basic', variant: 'tanky' }
-		]},
-		{ spawnDelay: 600, enemies: [
-			{ type: 'sniper', variant: 'normal' },
-			{ type: 'cannon', variant: 'normal' },
-			{ type: 'basic', variant: 'fast' }
-		]},
-		{ spawnDelay: 800, enemies: [
-			{ type: 'basic', variant: 'tanky' },
-			{ type: 'cannon', variant: 'heavy' },
-			{ type: 'sniper', variant: 'slow' }
-		]},
-		{ spawnDelay: 500, enemies: [
-			{ type: 'sniper', variant: 'slow' },
-			{ type: 'basic', variant: 'fast' },
-			{ type: 'basic', variant: 'tanky' }
-		]},
-		{ spawnDelay: 1200, enemies: [
-			{ type: 'cannon', variant: 'heavy' },
-			{ type: 'sniper', variant: 'normal' },
-			{ type: 'basic', variant: 'fast' }
-		]},
-		{ spawnDelay: 3000, enemies: [
-			{ type: 'boss', variant: 'final' },
-			{ type: 'sniper', variant: 'slow' },
-			{ type: 'cannon', variant: 'heavy' }
-		]}
-	];
+	// ==================== PATH GENERATOR ====================
+	class PathGenerator {
+		static createPath(waveNumber) {
+			const pathTypes = ['STRAIGHT', 'WINDING', 'BRANCHING', 'MAZE'];
+			const pathType = pathTypes[waveNumber % 4];
+			const pathLength = calculatePathLength(waveNumber);
+			
+			switch(pathType) {
+				case 'STRAIGHT':
+					return this.generateStraightPath(pathLength);
+				case 'WINDING':
+					return this.generateWindingPath(pathLength);
+				case 'BRANCHING':
+					return this.generateBranchingPath(pathLength);
+				case 'MAZE':
+					return this.generateMazePath(pathLength);
+				default:
+					return this.generateWindingPath(pathLength);
+			}
+		}
+		
+		static generateStraightPath(length) {
+			const path = [];
+			const y = 5 + Math.floor(Math.random() * 10);
+			for (let x = 0; x < Math.min(length, CONFIG.MAP_WIDTH); x++) {
+				path.push({ x: x, y: y });
+			}
+			return path;
+		}
+		
+		static generateWindingPath(length) {
+			const path = [];
+			let x = 0;
+			let y = 5 + Math.floor(Math.random() * 10);
+			const direction = Math.random() > 0.5 ? 1 : -1;
+			
+			while (x < Math.min(length, CONFIG.MAP_WIDTH)) {
+				path.push({ x: x, y: y });
+				x++;
+				
+				if (Math.random() < 0.3 && y + direction > 4 && y + direction < 15) {
+					y += direction;
+				}
+			}
+			return path;
+		}
+		
+		static generateBranchingPath(length) {
+			const path = [];
+			let x = 0;
+			let y = 10;
+			
+			while (x < Math.min(length, CONFIG.MAP_WIDTH)) {
+				path.push({ x: x, y: y });
+				x++;
+				
+				if (Math.random() < 0.2) {
+					y = Math.max(5, Math.min(14, y + (Math.random() > 0.5 ? 2 : -2)));
+				}
+			}
+			return path;
+		}
+		
+		static generateMazePath(length) {
+			const path = [];
+			let x = 0;
+			let y = 10;
+			let lastDir = 0;
+			
+			while (x < Math.min(length, CONFIG.MAP_WIDTH)) {
+				path.push({ x: x, y: y });
+				
+				const rand = Math.random();
+				if (rand < 0.4) {
+					x++;
+				} else if (rand < 0.6 && y > 5) {
+					y--;
+				} else if (rand < 0.8 && y < 14) {
+					y++;
+				} else {
+					x++;
+				}
+				
+				if (x >= CONFIG.MAP_WIDTH) break;
+			}
+			return path;
+		}
+		
+		static validatePath(path) {
+			if (!path || path.length < 5) return false;
+			if (path[0].x !== 0) return false;
+			if (path[path.length - 1].x < CONFIG.MAP_WIDTH - 1) return false;
+			
+			for (let i = 1; i < path.length; i++) {
+				const dx = Math.abs(path[i].x - path[i-1].x);
+				const dy = Math.abs(path[i].y - path[i-1].y);
+				if (dx + dy > 2) return false;
+			}
+			return true;
+		}
+	}
 
-	// Single continuous path from left to right - simple S-curve
-	const mainPath = [
-		// Enter from left side
-		{ x: 0, y: 10 }, { x: 1, y: 10 }, { x: 2, y: 10 }, { x: 3, y: 10 }, { x: 4, y: 10 },
-		// Go down
-		{ x: 4, y: 9 }, { x: 4, y: 8 }, { x: 4, y: 7 }, { x: 4, y: 6 },
-		// Go right
-		{ x: 5, y: 6 }, { x: 6, y: 6 }, { x: 7, y: 6 }, { x: 8, y: 6 }, { x: 9, y: 6 }, { x: 10, y: 6 },
-		// Go up
-		{ x: 10, y: 7 }, { x: 10, y: 8 }, { x: 10, y: 9 }, { x: 10, y: 10 },
-		// Go right to end
-		{ x: 11, y: 10 }, { x: 12, y: 10 }, { x: 13, y: 10 }, { x: 14, y: 10 }, { x: 15, y: 10 },
-		{ x: 16, y: 10 }, { x: 17, y: 10 }, { x: 18, y: 10 }, { x: 19, y: 10 }
-	];
+	// ==================== WAVE GENERATOR ====================
+	function generateWaveEnemies(waveNum) {
+		const enemies = [];
+		const count = calculateEnemyCount(waveNum);
+		const difficulty = calculateWaveDifficulty(waveNum);
+		
+		const enemyTypes = ['basic', 'fast', 'tank', 'sniper'];
+		const spawnRate = Math.max(400, 1200 - waveNum * 30);
+		
+		for (let i = 0; i < count; i++) {
+			let type = enemyTypes[Math.floor(Math.random() * Math.min(4, Math.floor(waveNum / 3) + 1))];
+			let variant = 'normal';
+			
+			if (waveNum >= 5 && Math.random() < 0.1) type = 'burrowing';
+			if (waveNum >= 10 && Math.random() < 0.05) type = 'spawner';
+			
+			if (waveNum % 5 === 0 && i === 0) {
+				type = 'boss';
+				variant = 'elite';
+			}
+			
+			enemies.push({ type: type, variant: variant, spawnDelay: spawnRate });
+		}
+		
+		return { enemies, spawnDelay: spawnRate };
+	}
 
+	// Dynamic path - generated each wave
+	let currentPath = [];
+	
+	// Legacy path reference for compatibility
 	const pathOptions = {
-		mainPath: mainPath
+		mainPath: currentPath
 	};
 
 	// ==================== WAVE GENERATION ====================
 	function selectPathForWave(waveNum) {
-		return 'mainPath';
+		// Generate new path for each wave
+		let attempts = 0;
+		while (attempts < 10) {
+			const path = PathGenerator.createPath(waveNum + attempts);
+			if (PathGenerator.validatePath(path)) {
+				currentPath = path;
+				pathOptions.mainPath = path;
+				return path;
+			}
+			attempts++;
+		}
+		// Fallback to default winding path
+		currentPath = PathGenerator.generateWindingPath(15);
+		pathOptions.mainPath = currentPath;
+		return currentPath;
 	}
 
 	// Get waypoint at index from a path
@@ -608,159 +667,202 @@
             // Build map
             buildMap();
             createAmbientParticles();
+            
+            // Initialize first path for display
+            currentPath = PathGenerator.generateWindingPath(15);
+            pathOptions.mainPath = currentPath;
+            drawPath(currentPath);
 
             // Create UI elements
             createUI();
 
             // Setup event listeners
             setupEventListeners();
-
+            
+            // Setup login and main menu handlers
+            setupLoginScreen();
+            
             // Start game loop
             animate();
         }
+        
+        function setupLoginScreen() {
+            const loginScreen = document.getElementById('login-screen');
+            const mainMenu = document.getElementById('main-menu');
+            const usernameInput = document.getElementById('username-input');
+            const loginBtn = document.getElementById('login-btn');
+            const playBtn = document.getElementById('play-btn');
+            const leaderboardBtn = document.getElementById('leaderboard-btn');
+            const achievementsBtn = document.getElementById('achievements-btn');
+            const welcomeText = document.getElementById('welcome-text');
+            
+            // Check for saved username
+            const savedUsername = localStorage.getItem('finalTowerUsername');
+            if (savedUsername) {
+                usernameInput.value = savedUsername;
+            }
+            
+            // Login button click
+            loginBtn.addEventListener('click', () => {
+                const username = usernameInput.value.trim() || 'Player';
+                localStorage.setItem('finalTowerUsername', username);
+                welcomeText.textContent = 'Welcome, ' + username + '!';
+                loginScreen.classList.add('hidden');
+                mainMenu.classList.remove('hidden');
+            });
+            
+            // Allow Enter key to login
+            usernameInput.addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    loginBtn.click();
+                }
+            });
+            
+            // Play button - start the game
+            playBtn.addEventListener('click', () => {
+                mainMenu.classList.add('hidden');
+                document.getElementById('game-ui').classList.remove('hidden');
+                document.getElementById('start-wave-btn').style.display = 'block';
+                gameState.gameStarted = true;
+                gameState.gamePhase = 'PREPARATION';
+                gameState.preparationTimer = CONFIG.PREPARATION_TIME;
+                generateNewPath();
+                clearPathTiles();
+                drawPath(currentPath);
+                updateUI();
+            });
+            
+            // Leaderboard button - show simple alert for now
+            leaderboardBtn.addEventListener('click', () => {
+                alert('Leaderboard coming soon!');
+            });
+            
+            // Achievements button - show simple alert for now
+            achievementsBtn.addEventListener('click', () => {
+                alert('Achievements coming soon!');
+            });
+        }
 
         function buildMap() {
-            // Base grass layer with organic shape
-            const terrainGeo = new THREE.PlaneGeometry(CONFIG.MAP_WIDTH * CONFIG.TILE_SIZE, CONFIG.MAP_HEIGHT * CONFIG.TILE_SIZE, 40, 20);
-            terrainGeo.rotateX(-Math.PI / 2);
+            // Minecraft-style voxel terrain (blocky cubes)
+            const blockSize = CONFIG.TILE_SIZE;
             
-            // Add organic height variation
-            const positions = terrainGeo.attributes.position;
-            for (let i = 0; i < positions.count; i++) {
-                const x = positions.getX(i);
-                const z = positions.getZ(i);
-                // Gentle rolling hills effect
-                positions.setY(i, Math.sin(x * 0.05) * Math.cos(z * 0.05) * 0.8 + Math.random() * 0.3);
+            // Dirt base layer
+            const dirtColors = [0x8B4513, 0xA0522D, 0x6B4423];
+            const stoneColors = [0x696969, 0x787878, 0x505050];
+            const grassColors = [0x228B22, 0x2E8B57, 0x32CD32];
+            
+            // Create voxel blocks for terrain
+            for (let x = 0; x < CONFIG.MAP_WIDTH; x++) {
+                for (let z = 0; z < CONFIG.MAP_HEIGHT; z++) {
+                    const worldX = x * blockSize + blockSize / 2;
+                    const worldZ = z * blockSize + blockSize / 2;
+                    
+                    // Top grass layer
+                    const grassGeo = new THREE.BoxGeometry(blockSize - 1, 4, blockSize - 1);
+                    const grassMat = new THREE.MeshLambertMaterial({ 
+                        color: grassColors[Math.floor(Math.random() * grassColors.length)]
+                    });
+                    const grassBlock = new THREE.Mesh(grassGeo, grassMat);
+                    grassBlock.position.set(worldX, 2, worldZ);
+                    grassBlock.receiveShadow = true;
+                    scene.add(grassBlock);
+                    
+                    // Dirt layer below
+                    const dirtGeo = new THREE.BoxGeometry(blockSize - 1, 8, blockSize - 1);
+                    const dirtMat = new THREE.MeshLambertMaterial({ 
+                        color: dirtColors[Math.floor(Math.random() * dirtColors.length)]
+                    });
+                    const dirtBlock = new THREE.Mesh(dirtGeo, dirtMat);
+                    dirtBlock.position.set(worldX, -2, worldZ);
+                    dirtBlock.receiveShadow = true;
+                    scene.add(dirtBlock);
+                    
+                    // Stone layer at bottom
+                    const stoneGeo = new THREE.BoxGeometry(blockSize - 1, 6, blockSize - 1);
+                    const stoneMat = new THREE.MeshLambertMaterial({ 
+                        color: stoneColors[Math.floor(Math.random() * stoneColors.length)]
+                    });
+                    const stoneBlock = new THREE.Mesh(stoneGeo, stoneMat);
+                    stoneBlock.position.set(worldX, -8, worldZ);
+                    stoneBlock.receiveShadow = true;
+                    scene.add(stoneBlock);
+                }
             }
-            terrainGeo.computeVertexNormals();
             
-            // Rich grass material with slight variation
-            const grassMat = new THREE.MeshLambertMaterial({ 
-                color: 0x2d5a27,
-                side: THREE.DoubleSide
-            });
-            const terrain = new THREE.Mesh(terrainGeo, grassMat);
-            terrain.position.set(CONFIG.MAP_WIDTH * CONFIG.TILE_SIZE / 2, 0, CONFIG.MAP_HEIGHT * CONFIG.TILE_SIZE / 2);
-            scene.add(terrain);
-
-            // Add layered grass details for depth
-            const grassColors = [0x3d7a37, 0x4a8f47, 0x2d5a27, 0x358040];
-            const grassBladeGeo = new THREE.ConeGeometry(0.4, 2, 4);
-            grassBladeGeo.translate(0, 1, 0);
+            // Add decorative stones
+            const decorGeo = new THREE.BoxGeometry(6, 4, 5);
+            const decorMat = new THREE.MeshLambertMaterial({ color: 0x808080 });
             
-            // Create multiple grass layers for depth
-            for (let layer = 0; layer < 3; layer++) {
-                const layerScale = 0.6 + layer * 0.2;
-                const grassBladeMat = new THREE.MeshLambertMaterial({ 
-                    color: grassColors[layer % grassColors.length],
-                    transparent: layer > 0,
-                    opacity: layer === 0 ? 1 : 0.7
-                });
+            for (let i = 0; i < 30; i++) {
+                const x = Math.floor(Math.random() * CONFIG.MAP_WIDTH);
+                const z = Math.floor(Math.random() * CONFIG.MAP_HEIGHT);
                 
-                for (let x = 0; x < CONFIG.MAP_WIDTH * (4 - layer); x++) {
-                    for (let z = 0; z < CONFIG.MAP_HEIGHT * (4 - layer); z++) {
-                        const worldX = x * (CONFIG.TILE_SIZE / (4 - layer)) + CONFIG.TILE_SIZE / (4 - layer) / 2;
-                        const worldZ = z * (CONFIG.TILE_SIZE / (4 - layer)) + CONFIG.TILE_SIZE / (4 - layer) / 2;
-                        
-                        // Skip path and dense areas
-                        const isPath = Object.values(pathOptions).some(route =>
-                            route.some(p => Math.abs(p.x * CONFIG.TILE_SIZE - worldX) < CONFIG.TILE_SIZE && 
-                                            Math.abs(p.y * CONFIG.TILE_SIZE - worldZ) < CONFIG.TILE_SIZE)
-                        );
-                        if (isPath || Math.random() > 0.7) continue;
-                        
-                        const blade = new THREE.Mesh(grassBladeGeo, grassBladeMat);
-                        blade.position.set(worldX, 0, worldZ);
-                        blade.rotation.y = Math.random() * Math.PI;
-                        blade.scale.setScalar(layerScale * (0.5 + Math.random() * 0.5));
-                        scene.add(blade);
-                    }
-                }
+                const decor = new THREE.Mesh(decorGeo, decorMat);
+                decor.position.set(
+                    x * blockSize + blockSize / 2,
+                    4,
+                    z * blockSize + blockSize / 2
+                );
+                decor.rotation.y = Math.random() * Math.PI;
+                scene.add(decor);
             }
+        }
 
-            // Add small decorative elements - flowers and rocks
-            const flowerGeo = new THREE.SphereGeometry(0.5, 6, 6);
-            const flowerColors = [0xffffff, 0xfeca57, 0xff6b6b, 0xa29bfe];
-            const rockGeo = new THREE.DodecahedronGeometry(0.6);
-            const rockMat = new THREE.MeshLambertMaterial({ color: 0x7f8c9a });
+        function drawPath(path) {
+            if (!path || !Array.isArray(path)) return;
             
-            for (let x = 0; x < CONFIG.MAP_WIDTH * 2; x++) {
-                for (let z = 0; z < CONFIG.MAP_HEIGHT * 2; z++) {
-                    const worldX = x * (CONFIG.TILE_SIZE / 2) + CONFIG.TILE_SIZE / 4;
-                    const worldZ = z * (CONFIG.TILE_SIZE / 2) + CONFIG.TILE_SIZE / 4;
-                    
-                    // Check path
-                    const isPath = Object.values(pathOptions).some(route =>
-                        route.some(p => Math.abs(p.x * CONFIG.TILE_SIZE - worldX) < CONFIG.TILE_SIZE && 
-                                        Math.abs(p.y * CONFIG.TILE_SIZE - worldZ) < CONFIG.TILE_SIZE)
+            const pathColors = [0x3d2817, 0x4a3520, 0x2d1f12]; // Dark dirt colors
+            
+            for (let i = 0; i < path.length; i++) {
+                const p = path[i];
+                if (!p || p.x === undefined) continue;
+
+                const x = p.x * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
+                const z = p.y * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
+                
+                // Dig into terrain - darker dirt tunnel look
+                const pathGeo = new THREE.BoxGeometry(CONFIG.TILE_SIZE - 1, 12, CONFIG.TILE_SIZE - 1);
+                const pathMat = new THREE.MeshLambertMaterial({ 
+                    color: pathColors[Math.floor(Math.random() * pathColors.length)],
+                    emissive: 0x1a1008,
+                    emissiveIntensity: 0.15
+                });
+                const pathTile = new THREE.Mesh(pathGeo, pathMat);
+                pathTile.position.set(x, 2, z);
+                scene.add(pathTile);
+                pathSegments.push({ mesh: pathTile });
+                
+                // Glowing path edges
+                const edgeGeo = new THREE.BoxGeometry(CONFIG.TILE_SIZE, 2, CONFIG.TILE_SIZE);
+                const edgeMat = new THREE.MeshBasicMaterial({ 
+                    color: 0x00ff00,
+                    transparent: true,
+                    opacity: 0.3
+                });
+                const edge = new THREE.Mesh(edgeGeo, edgeMat);
+                edge.position.set(x, 8, z);
+                scene.add(edge);
+                
+                // Directional arrow on path tiles
+                if (i % 3 === 0 && i < path.length - 1) {
+                    const nextP = path[i + 1];
+                    const arrowGeo = new THREE.ConeGeometry(3, 8, 4);
+                    arrowGeo.rotateX(Math.PI / 2);
+                    const arrowMat = new THREE.MeshLambertMaterial({ 
+                        color: 0xffd43b, 
+                        emissive: 0xffd43b, 
+                        emissiveIntensity: 0.5 
+                    });
+                    const arrow = new THREE.Mesh(arrowGeo, arrowMat);
+                    arrow.position.set(x, 9, z);
+                    arrow.lookAt(
+                        nextP.x * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2, 
+                        9, 
+                        nextP.y * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2
                     );
-                    if (isPath) continue;
-                    
-                    // Random chance for flowers or rocks
-                    if (Math.random() < 0.03) {
-                        // Flower
-                        const flowerMat = new THREE.MeshLambertMaterial({ 
-                            color: flowerColors[Math.floor(Math.random() * flowerColors.length)]
-                        });
-                        const flower = new THREE.Mesh(flowerGeo, flowerMat);
-                        flower.position.set(worldX, 1.5, worldZ);
-                        scene.add(flower);
-                    } else if (Math.random() < 0.02) {
-                        // Small rock
-                        const rock = new THREE.Mesh(rockGeo, rockMat);
-                        rock.position.set(worldX, 0.3, worldZ);
-                        rock.rotation.set(Math.random(), Math.random(), Math.random());
-                        rock.scale.setScalar(0.5 + Math.random() * 0.5);
-                        scene.add(rock);
-                    }
-                }
-            }
-            console.log('Terrain added at', terrain.position.x, terrain.position.z);
-
-            // Draw path tiles with arrows and grid lines
-            for (const route of Object.values(pathOptions)) {
-                if (!route || !Array.isArray(route)) continue;
-                for (let i = 0; i < route.length; i++) {
-                    const p = route[i];
-                    if (!p || p.x === undefined) continue;
-
-                    const x = p.x * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
-                    const y = p.y * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
-                    
-                    const pathGeo = new THREE.BoxGeometry(CONFIG.TILE_SIZE - 2, 8, CONFIG.TILE_SIZE - 2);
-                    const pathMat = new THREE.MeshLambertMaterial({ color: 0x8b7355 });
-                    const pathTile = new THREE.Mesh(pathGeo, pathMat);
-                    pathTile.position.set(x, 4, y);
-                    scene.add(pathTile);
-                    pathSegments.push({ mesh: pathTile });
-                    
-                    // Grid lines between tiles
-                    if (i < route.length - 1) {
-                        const nextP = route[i + 1];
-                        const midX = (x + (nextP.x * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2)) / 2;
-                        const midY = (y + (nextP.y * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2)) / 2;
-                        
-                        const lineGeo = new THREE.BoxGeometry(2, 1, CONFIG.TILE_SIZE * 0.6);
-                        const lineMat = new THREE.MeshBasicMaterial({ color: 0x6b5344 });
-                        const line = new THREE.Mesh(lineGeo, lineMat);
-                        line.position.set(midX, 9, midY);
-                        line.lookAt(nextP.x * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2, 9, nextP.y * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2);
-                        scene.add(line);
-                    }
-                    
-                    // Directional arrow on every 3rd tile
-                    if (i % 3 === 0 && i < route.length - 1) {
-                        const arrowGeo = new THREE.ConeGeometry(3, 8, 4);
-                        arrowGeo.rotateX(Math.PI / 2);
-                        const arrowMat = new THREE.MeshLambertMaterial({ color: 0xffd43b, emissive: 0xffd43b, emissiveIntensity: 0.3 });
-                        const arrow = new THREE.Mesh(arrowGeo, arrowMat);
-                        
-                        const nextP = route[i + 1];
-                        arrow.position.set(x, 10, y);
-                        arrow.lookAt(nextP.x * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2, 10, nextP.y * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2);
-                        arrow.rotateX(Math.PI / 2);
-                        scene.add(arrow);
-                    }
+                    arrow.rotateX(Math.PI / 2);
+                    scene.add(arrow);
                 }
             }
         }
@@ -769,41 +871,146 @@
             // Static paths - no dynamic generation needed
         }
 
+        function startGame() {
+            gameState.gameStarted = true;
+            gameState.gamePhase = 'PREPARATION';
+            gameState.preparationTimer = CONFIG.PREPARATION_TIME;
+            
+            // Generate first path
+            generateNewPath();
+            
+            // Clear old path tiles and draw new ones
+            clearPathTiles();
+            drawPath(currentPath);
+            
+            updateUI();
+        }
+        
+        function generateNewPath() {
+            const path = selectPathForWave(gameState.wave);
+            currentPath = path;
+            
+            // Build pathGrid for collision detection
+            gameState.pathGrid = [];
+            for (let x = 0; x < CONFIG.MAP_WIDTH; x++) {
+                gameState.pathGrid[x] = [];
+                for (let y = 0; y < CONFIG.MAP_HEIGHT; y++) {
+                    gameState.pathGrid[x][y] = false;
+                }
+            }
+            
+            path.forEach(p => {
+                if (p.x >= 0 && p.x < CONFIG.MAP_WIDTH && p.y >= 0 && p.y < CONFIG.MAP_HEIGHT) {
+                    gameState.pathGrid[p.x][p.y] = true;
+                }
+            });
+            
+            // Check for turrets in path and destroy them
+            destroyOverlappingTurrets();
+        }
+        
+        function destroyOverlappingTurrets() {
+            const turretsToDestroy = [];
+            
+            gameState.towers.forEach((tower, index) => {
+                if (tower.gridX >= 0 && tower.gridX < CONFIG.MAP_WIDTH &&
+                    tower.gridY >= 0 && tower.gridY < CONFIG.MAP_HEIGHT) {
+                    if (gameState.pathGrid[tower.gridX] && gameState.pathGrid[tower.gridX][tower.gridY]) {
+                        turretsToDestroy.push(index);
+                    }
+                }
+            });
+            
+            // Destroy turrets from highest index first
+            turretsToDestroy.sort((a, b) => b - a).forEach(index => {
+                const tower = gameState.towers[index];
+                const towerType = tower.typeKey;
+                const refund = Math.floor(TOWER_TYPES[towerType].cost * 0.8);
+                
+                // Energy refund
+                gameState.energy = Math.min(CONFIG.MAX_ENERGY, gameState.energy + refund);
+                
+                // Visual destruction effect
+                createExplosion(tower.mesh.position.x, tower.mesh.position.y, tower.mesh.position.z, 1.5);
+                
+                // Remove from scene
+                scene.remove(tower.mesh);
+                
+                // Remove from array
+                gameState.towers.splice(index, 1);
+            });
+            
+            if (turretsToDestroy.length > 0) {
+                showFloatingText(window.innerWidth / 2, window.innerHeight / 2, 0, 
+                    `+${turretsToDestroy.length} turrets destroyed!`, '#ff6b6b');
+            }
+        }
+        
+        function clearPathTiles() {
+            // Remove old path meshes
+            pathSegments.forEach(seg => {
+                if (seg.mesh && seg.mesh.parent) {
+                    scene.remove(seg.mesh);
+                }
+            });
+            pathSegments = [];
+        }
+        
         function startWave() {
-            if (gameState.wave > CONFIG.TOTAL_WAVES) {
-                endGame(true);
+            if (gameState.gamePhase === 'GAME_OVER') return;
+            
+            // If in preparation phase, start wave early
+            if (gameState.gamePhase === 'PREPARATION') {
+                startWaveActive();
                 return;
             }
-
-            const waveIndex = gameState.wave - 1;
-            if (waveIndex >= WAVES.length) {
-                console.log("No more waves defined!");
-                gameState.waveActive = false;
+            
+            // Start first wave
+            if (!gameState.gameStarted) {
+                startGame();
                 return;
             }
-
-            const selectedPath = selectPathForWave(gameState.wave);
-            console.log(`Wave ${gameState.wave} using path:`, selectedPath);
-
-            currentWaveNum = gameState.wave;
-            currentWave = WAVES[waveIndex];
-            waveEnemies = generateWaveEnemies(currentWave.enemies, currentWaveNum);
-            lastSpawnTime = Date.now();
+        }
+        
+        function startWaveActive() {
+            gameState.gamePhase = 'WAVE_ACTIVE';
             gameState.waveActive = true;
-
-            const path = pathOptions[selectedPath] || [];
+            
+            const waveData = generateWaveEnemies(gameState.wave);
+            currentWaveNum = gameState.wave;
+            currentWave = waveData;
+            waveEnemies = waveData.enemies;
+            lastSpawnTime = Date.now();
+            
+            // Calculate wave duration
+            const path = currentPath || [];
             const pathLength = path.length * CONFIG.TILE_SIZE;
-            const baseSpeed = 0.5 + (gameState.wave * 0.05);
-            const travelTime = (pathLength / baseSpeed) / 60;
-            const spawnTime = (currentWave.enemies.length * currentWave.spawnDelay) / 1000;
+            const baseSpeed = 2 + (gameState.wave * 0.2);
+            const travelTime = (pathLength / baseSpeed);
+            const spawnTime = (waveEnemies.length * waveData.spawnDelay) / 1000;
             waveDuration = Math.ceil(spawnTime + travelTime + 10);
             waveStartTime = Date.now();
             
-            console.log('Wave duration:', waveDuration, 'seconds (spawn:', spawnTime, 'travel:', travelTime, ')');
-            updateUI();
-
             document.getElementById('start-wave-btn').classList.add('hidden');
             showWaveAnnouncement(gameState.wave);
+            updateUI();
+        }
+        
+        function startPreparationPhase() {
+            gameState.gamePhase = 'PREPARATION';
+            gameState.preparationTimer = CONFIG.PREPARATION_TIME;
+            gameState.waveActive = false;
+            
+            // Track path changes
+            gameState.pathChanges = (gameState.pathChanges || 0) + 1;
+            
+            // Generate new path for next wave
+            gameState.wave++;
+            generateNewPath();
+            clearPathTiles();
+            drawPath(currentPath);
+            
+            updateUI();
         }
 
         function createUI() {
@@ -844,18 +1051,21 @@
             startBtn.style.background = '#69db7c';
             
             startBtn.addEventListener('click', () => {
+                if (gameState.gamePhase === 'GAME_OVER') {
+                    location.reload();
+                    return;
+                }
+                
                 if (!gameState.gameStarted) {
-                    gameState.gameStarted = true;
-                    startBtn.textContent = 'START WAVE 1';
-                    startBtn.style.background = '#69db7c';
-                    updateUI();
-                } else if (!gameState.waveActive) {
-                    if (gameState.wave > CONFIG.TOTAL_WAVES) {
-                        endGame(true);
-                        return;
-                    }
-                    startWave();
-                    startBtn.classList.add('hidden');
+                    // First click - start game
+                    startGame();
+                    startBtn.textContent = `WAVE ${gameState.wave} - ${gameState.preparationTimer}s`;
+                } else if (gameState.gamePhase === 'PREPARATION') {
+                    // Click during preparation - start wave early
+                    startWaveActive();
+                } else if (gameState.gamePhase === 'WAVE_ACTIVE' && !gameState.waveActive) {
+                    // Wave completed - start next preparation
+                    startPreparationPhase();
                 }
             });
         }
@@ -1149,8 +1359,20 @@
 					damage = 2 + Math.floor(waveNum / 3);
 					geo = new THREE.SphereGeometry(8, 16, 16);
 					color = '#51cf66';
-					if (variant === 'fast') { speed *= 1.8; geo.scale.set(0.7, 0.7, 0.7); }
-					if (variant === 'tanky') { speed *= 0.5; health *= 2.5; geo = new THREE.BoxGeometry(14, 14, 14); color = '#339af0'; }
+					break;
+				case 'fast':
+					health = 20 + (waveNum * 3);
+					damage = 2 + Math.floor(waveNum / 4);
+					speed *= 1.8;
+					geo = new THREE.SphereGeometry(6, 12, 12);
+					color = '#ffd43b';
+					break;
+				case 'tank':
+					health = 60 + (waveNum * 8);
+					damage = 4 + Math.floor(waveNum / 2);
+					speed *= 0.5;
+					geo = new THREE.BoxGeometry(14, 14, 14);
+					color = '#339af0';
 					break;
 				case 'sniper':
 					health = 18 + waveNum;
@@ -1159,22 +1381,33 @@
 					geo = new THREE.OctahedronGeometry(9);
 					color = '#845ef7';
 					break;
-				case 'cannon':
-					health = 12 + waveNum * 2;
-					damage = 6 + Math.floor(waveNum / 3);
-					speed *= 0.7;
-					geo = new THREE.CylinderGeometry(10, 10, 10, 8);
-					color = '#ffc078';
+				case 'burrowing':
+					health = 25 + (waveNum * 4);
+					damage = 3 + Math.floor(waveNum / 3);
+					speed *= 0.8;
+					geo = new THREE.CylinderGeometry(8, 8, 12, 8);
+					color = '#a0522d';
+					break;
+				case 'spawner':
+					health = 40 + (waveNum * 6);
+					damage = 2;
+					speed *= 0.4;
+					geo = new THREE.IcosahedronGeometry(12);
+					color = '#e599f7';
 					break;
 				case 'boss':
 					health = (waveNum % 5 === 0) ? (100 + waveNum * 20) : 80;
 					damage = (waveNum % 5 === 0) ? (20 + Math.floor(waveNum / 3)) : 8;
 					speed *= 0.4;
-					geo = new THREE.IcosahedronGeometry(18);
+					geo = new THREE.IcosahedronGeometry(20);
 					color = '#ff6b6b';
 					break;
 				default:
-					return null;
+					// Default to basic
+					health = 30 + (waveNum * 5);
+					damage = 2 + Math.floor(waveNum / 3);
+					geo = new THREE.SphereGeometry(8, 16, 16);
+					color = '#51cf66';
 			}
 
             const mat = new THREE.MeshLambertMaterial({ 
@@ -1183,8 +1416,7 @@
                 emissiveIntensity: 0.15
             });
 
-            const selectedPathKey = selectPathForWave(waveNum);
-            const path = pathOptions[selectedPathKey] || pathOptions.mainPath || [];
+            const path = currentPath || [];
             
             if (path.length === 0) {
                 console.error('No path defined!');
@@ -1287,19 +1519,38 @@
 
             scene.remove(enemy.mesh);
             
+            // Track kills
+            if (!reachedEnd) {
+                gameState.totalKills = (gameState.totalKills || 0) + 1;
+                
+                // Track boss defeats
+                if (enemy.type === 'boss') {
+                    gameState.bossesDefeated = (gameState.bossesDefeated || 0) + 1;
+                }
+            }
+            
             // Create explosion effect
             createExplosion(
                 enemy.position.x,
-                enemy.position.y - 15,
+                enemy.position.y,
                 enemy.position.z,
-                reachedEnd ? 3 : 1 // Larger if boss or reached end
+                enemy.type === 'boss' ? 3 : 1
             );
 
-            // Award energy for defeating enemy (only if killed by tower, not reached end)
+            // Award energy for defeating enemy
             if (!reachedEnd) {
-                const energyReward = enemy.type === 'boss' ? 30 : (enemy.type === 'cannon' ? 15 : 10);
-                gameState.energy += energyReward;
-                showFloatingText(enemy.position.x, enemy.position.y, `+${energyReward} ⚡`, '#feca57');
+                let energyReward = 10;
+                switch(enemy.type) {
+                    case 'boss': energyReward = 30; break;
+                    case 'spawner': energyReward = 20; break;
+                    case 'tank': energyReward = 15; break;
+                    case 'sniper': energyReward = 12; break;
+                    case 'burrowing': energyReward = 15; break;
+                    case 'fast': energyReward = 8; break;
+                    default: energyReward = 10;
+                }
+                gameState.energy = Math.min(CONFIG.MAX_ENERGY, gameState.energy + energyReward);
+                showFloatingText(enemy.position.x, enemy.position.y, enemy.position.z, `+${energyReward} ⚡`, '#feca57');
             }
 
             gameState.enemies.splice(index, 1);
@@ -1705,6 +1956,7 @@
 
         function checkWaveCompletion() {
             if (!gameState.waveActive) return;
+            if (!waveEnemies || !currentWave) return;
 
             const now = Date.now();
             
@@ -1735,25 +1987,22 @@
         }
 
         function waveComplete() {
+            // Wave completion bonus
+            gameState.energy = Math.min(CONFIG.MAX_ENERGY, gameState.energy + 20);
+            
             if (Math.random() < 0.35) {
                 showEventPopup();
             }
 
-            gameState.waveActive = false;
-            gameState.wave++;
-            
-            const startBtn = document.getElementById('start-wave-btn');
-            if (gameState.wave <= CONFIG.TOTAL_WAVES) {
-                startBtn.textContent = `START WAVE ${gameState.wave}`;
-                startBtn.style.background = '#69db7c';
-                startBtn.classList.remove('hidden');
+            // Update max wave reached
+            if (gameState.wave > gameState.maxWaveReached) {
+                gameState.maxWaveReached = gameState.wave;
             }
+            
+            // Transition to preparation phase for next wave
+            startPreparationPhase();
             
             updateUI();
-            
-            if (gameState.wave > CONFIG.TOTAL_WAVES) {
-                endGame(true);
-            }
         }
 
         function showEventPopup() {
@@ -1775,17 +2024,40 @@
             setTimeout(() => popup.classList.remove('show'), 3000);
         }
 
+        let lastEnergyRegen = Date.now();
+        
         function animate() {
             requestAnimationFrame(animate);
 
             if (gameState.gameOver) return;
 
             const delta = 16;
+            const now = Date.now();
+            
+            // Energy regeneration (+1 per second)
+            if (now - lastEnergyRegen >= 1000) {
+                gameState.energy = Math.min(CONFIG.MAX_ENERGY, gameState.energy + CONFIG.ENERGY_REGEN);
+                lastEnergyRegen = now;
+                updateUI();
+            }
+            
+            // Preparation phase countdown
+            if (gameState.gamePhase === 'PREPARATION') {
+                const elapsed = Math.floor((now - preparationStartTime) / 1000);
+                gameState.preparationTimer = Math.max(0, CONFIG.PREPARATION_TIME - elapsed);
+                
+                const startBtn = document.getElementById('start-wave-btn');
+                startBtn.textContent = gameState.preparationTimer > 0 ? 
+                    `WAVE ${gameState.wave} - ${gameState.preparationTimer}s` : 'START WAVE';
+                
+                if (gameState.preparationTimer <= 0) {
+                    startWaveActive();
+                }
+            }
 
-            // Tower combat logic - check if towers should fire
+            // Tower combat logic
             if (gameState.waveActive && gameState.enemies.length > 0) {
                 gameState.towers.forEach((tower, index) => {
-                    const now = Date.now();
                     const fireRate = tower.fireRate || 1000;
                     if (now - tower.lastFired > fireRate) {
                         createProjectile(index);
@@ -1803,14 +2075,207 @@
 
             renderer.render(scene, camera);
         }
+        
+        let preparationStartTime = Date.now();
 
         function endGame(victory) {
             gameState.gameOver = true;
+            gameState.gamePhase = 'GAME_OVER';
+            
+            // Save score to leaderboard
+            saveScore(gameState.maxWaveReached);
+            
+            // Update achievements
+            updateAchievements();
+            
+            // Save game state
+            saveGameState();
+            
             const screen = document.getElementById('game-over-screen');
             screen.classList.remove('hidden');
             document.getElementById('end-title').textContent = victory ? 'VICTORY!' : 'GAME OVER';
             document.getElementById('end-reason').textContent = 
-                victory ? `You survived all ${CONFIG.TOTAL_WAVES} waves!` : 'Enemies reached the end.';
+                victory ? `You reached wave ${gameState.maxWaveReached}!` : `You reached wave ${gameState.wave}. Better luck next time!`;
+            
+            // Show stats
+            showGameStats();
+        }
+
+        // ==================== LEADERBOARD SYSTEM ====================
+        const LEADERBOARD_KEY = 'finalTower_leaderboard';
+        const MAX_SCORES = 10;
+        
+        function getLeaderboard() {
+            try {
+                const data = localStorage.getItem(LEADERBOARD_KEY);
+                return data ? JSON.parse(data) : [];
+            } catch (e) {
+                return [];
+            }
+        }
+        
+        function saveScore(wave) {
+            if (wave < 1) return;
+            
+            const leaderboard = getLeaderboard();
+            leaderboard.push({
+                wave: wave,
+                date: new Date().toISOString(),
+                score: wave * 100
+            });
+            
+            // Sort by wave (highest first)
+            leaderboard.sort((a, b) => b.wave - a.wave);
+            
+            // Keep only top scores
+            const topScores = leaderboard.slice(0, MAX_SCORES);
+            
+            try {
+                localStorage.setItem(LEADERBOARD_KEY, JSON.stringify(topScores));
+            } catch (e) {
+                console.log('Could not save leaderboard');
+            }
+        }
+        
+        function showGameStats() {
+            const leaderboard = getLeaderboard();
+            const statsDiv = document.getElementById('game-stats') || createStatsDiv();
+            
+            let statsHTML = '<div id="game-stats" style="text-align:center; margin-top:20px;">';
+            statsHTML += '<h3>Your Stats</h3>';
+            statsHTML += `<p>Highest Wave: ${gameState.maxWaveReached}</p>`;
+            statsHTML += `<p>Total Kills: ${gameState.totalKills || 0}</p>`;
+            
+            if (leaderboard.length > 0) {
+                statsHTML += '<h3>Leaderboard</h3>';
+                leaderboard.slice(0, 5).forEach((entry, i) => {
+                    statsHTML += `<p>${i + 1}. Wave ${entry.wave} - ${entry.date.substring(0, 10)}</p>`;
+                });
+            }
+            statsHTML += '</div>';
+            
+            const endReason = document.getElementById('end-reason');
+            endReason.innerHTML += statsHTML;
+        }
+        
+        function createStatsDiv() {
+            const div = document.createElement('div');
+            div.id = 'game-stats';
+            return div;
+        }
+        
+        // ==================== ACHIEVEMENTS SYSTEM ====================
+        const ACHIEVEMENTS_KEY = 'finalTower_achievements';
+        
+        const ACHIEVEMENTS = {
+            MOLE_MASHER: { id: 'mole_masher', name: 'Mole Masher', desc: 'Kill 100 enemies', target: 100, reward: 50 },
+            SURVIVALIST: { id: 'survivalist', name: 'Survivalist', desc: 'Reach wave 20', target: 20, reward: 100 },
+            PATHMASTER: { id: 'pathmaster', name: 'Pathmaster', desc: 'Survive 5 path changes', target: 5, reward: 75 },
+            BOSS_BASHER: { id: 'boss_basher', name: 'Boss Basher', desc: 'Defeat 10 bosses', target: 10, reward: 100 },
+            ENDLESS_DEFENDER: { id: 'endless_defender', name: 'Endless Defender', desc: 'Reach wave 50', target: 50, reward: 200 }
+        };
+        
+        function getAchievements() {
+            try {
+                const data = localStorage.getItem(ACHIEVEMENTS_KEY);
+                return data ? JSON.parse(data) : {};
+            } catch (e) {
+                return {};
+            }
+        }
+        
+        function saveAchievements(achievements) {
+            try {
+                localStorage.setItem(ACHIEVEMENTS_KEY, JSON.stringify(achievements));
+            } catch (e) {
+                console.log('Could not save achievements');
+            }
+        }
+        
+        function unlockAchievement(id) {
+            const achievements = getAchievements();
+            if (!achievements[id]) {
+                achievements[id] = { unlocked: true, date: new Date().toISOString() };
+                saveAchievements(achievements);
+                
+                const achievement = ACHIEVEMENTS[id];
+                if (achievement) {
+                    gameState.energy = Math.min(CONFIG.MAX_ENERGY, gameState.energy + achievement.reward);
+                    showFloatingText(window.innerWidth / 2, window.innerHeight / 2, 0, 
+                        `🏆 ${achievement.name}! +${achievement.reward}⚡`, '#ffd700');
+                }
+            }
+        }
+        
+        function updateAchievements() {
+            const kills = gameState.totalKills || 0;
+            const wave = gameState.maxWaveReached;
+            const pathChanges = gameState.pathChanges || 0;
+            const bossesDefeated = gameState.bossesDefeated || 0;
+            
+            if (kills >= 100) unlockAchievement('MOLE_MASHER');
+            if (wave >= 20) unlockAchievement('SURVIVALIST');
+            if (pathChanges >= 5) unlockAchievement('PATHMASTER');
+            if (bossesDefeated >= 10) unlockAchievement('BOSS_BASHER');
+            if (wave >= 50) unlockAchievement('ENDLESS_DEFENDER');
+        }
+        
+        // ==================== SAVE/LOAD SYSTEM ====================
+        const SAVE_KEY = 'finalTower_save';
+        
+        function saveGameState() {
+            const saveData = {
+                wave: gameState.wave,
+                maxWaveReached: gameState.maxWaveReached,
+                energy: gameState.energy,
+                lives: gameState.lives,
+                towers: gameState.towers.map(t => ({
+                    typeKey: t.typeKey,
+                    gridX: t.gridX,
+                    gridY: t.gridY,
+                    damageMult: t.damageMult
+                })),
+                totalKills: gameState.totalKills || 0,
+                pathChanges: gameState.pathChanges || 0,
+                bossesDefeated: gameState.bossesDefeated || 0,
+                savedAt: new Date().toISOString()
+            };
+            
+            try {
+                localStorage.setItem(SAVE_KEY, JSON.stringify(saveData));
+            } catch (e) {
+                console.log('Could not save game');
+            }
+        }
+        
+        function loadGameState() {
+            try {
+                const data = localStorage.getItem(SAVE_KEY);
+                if (data) {
+                    const saveData = JSON.parse(data);
+                    
+                    gameState.wave = saveData.wave || 1;
+                    gameState.maxWaveReached = saveData.maxWaveReached || 0;
+                    gameState.energy = saveData.energy || CONFIG.BASE_ENERGY;
+                    gameState.lives = saveData.lives || CONFIG.BASE_LIVES;
+                    gameState.totalKills = saveData.totalKills || 0;
+                    gameState.pathChanges = saveData.pathChanges || 0;
+                    gameState.bossesDefeated = saveData.bossesDefeated || 0;
+                    
+                    return true;
+                }
+            } catch (e) {
+                console.log('Could not load game');
+            }
+            return false;
+        }
+        
+        function hasSavedGame() {
+            try {
+                return localStorage.getItem(SAVE_KEY) !== null;
+            } catch (e) {
+                return false;
+            }
         }
 
         // ==================== GAME LOOP VARIABLES ====================
@@ -1902,6 +2367,17 @@
 
         // Start the game
         init();
+        
+        // Try to load saved game
+        if (hasSavedGame()) {
+            const startBtn = document.getElementById('start-wave-btn');
+            startBtn.textContent = 'CONTINUE';
+            startBtn.style.background = '#74c0fc';
+            
+            // Load the saved game
+            loadGameState();
+            updateUI();
+        }
     </script>
 </body>
 </html>
