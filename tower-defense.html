@@ -1336,25 +1336,45 @@
         }
 
         function createUI() {
-            // Tower cards
+            // Tower cards with enhanced visuals
             const container = document.getElementById('tower-buttons');
             Object.entries(TOWER_TYPES).forEach(([key, type]) => {
                 const btn = document.createElement('div');
                 btn.className = 'tower-btn';
+                
+                // Enhanced tower card with visual preview
+                const towerColors = {
+                    BASIC: '#ff6b6b',
+                    SNIPER: '#4ecdc4',
+                    CANNON: '#ffe66d',
+                    TRAP: '#ff8787',
+                    SLOW: '#74c0fc'
+                };
+                const color = towerColors[key] || '#fff';
+                
                 const dmg = type.damage || 1;
-                const rate = type.fireRate ? Math.round(60/type.fireRate) : 1;
+                const rate = type.fireRate ? Math.round(1000/type.fireRate) : 1;
+                
                 btn.innerHTML = `
-                    <div class="tower-icon">${type.icon}</div>
-                    <div class="tower-name">${type.name}</div>
-                    <div class="tower-cost">⚡ ${type.cost}</div>
-                    <div class="tower-stats">DMG: ${dmg} | ${rate}/sec</div>
+                    <div class="tower-icon" style="background:linear-gradient(135deg, ${color}33, ${color}66); border: 2px solid ${color};">
+                        <div style="width:100%;height:100%;display:flex;align-items:center;justify-content:center;">
+                            <svg width="40" height="40" viewBox="0 0 40 40">
+                                <circle cx="20" cy="20" r="15" fill="${color}" opacity="0.3"/>
+                                <circle cx="20" cy="20" r="10" fill="${color}"/>
+                                <rect x="15" y="8" width="10" height="20" fill="${color}" rx="2"/>
+                                <circle cx="20" cy="20" r="5" fill="#fff" opacity="0.8"/>
+                            </svg>
+                        </div>
+                    </div>
+                    <div class="tower-name" style="color:${color};font-weight:bold;">${type.name}</div>
+                    <div class="tower-cost" style="color:#ffd43b;">⚡ ${type.cost}</div>
+                    <div class="tower-stats" style="color:#aaa;font-size:10px;">DMG: ${dmg} | SPD: ${rate}/s</div>
                 `;
                 if (gameState.energy < type.cost) btn.classList.add('disabled');
                 
                 btn.addEventListener('click', (e) => {
-                    e.stopPropagation(); // Prevent bubbling to game-container
+                    e.stopPropagation();
                     if (gameState.selectedTower === key) {
-                        // Deselect if clicking already selected tower
                         document.querySelectorAll('.tower-btn').forEach(b => b.classList.remove('selected'));
                         gameState.selectedTower = null;
                     } else {
@@ -1363,7 +1383,6 @@
                         gameState.selectedTower = key;
                     }
                 });
-                // Add data attribute for easy targeting
                 btn.setAttribute('data-tower', key);
                 container.appendChild(btn);
             });
@@ -1543,6 +1562,9 @@
             const towerDef = TOWER_TYPES[typeKey];
             const meshGroup = new THREE.Group();
             
+            let barrel = null;
+            let head = null;
+            
             if (typeKey === 'BASIC') {
                 // Basic turret - box base with rotating top
                 const baseGeo = new THREE.BoxGeometry(CONFIG.TILE_SIZE * 0.7, 8, CONFIG.TILE_SIZE * 0.7);
@@ -1555,7 +1577,7 @@
                 // Rotating turret head
                 const headGeo = new THREE.BoxGeometry(CONFIG.TILE_SIZE * 0.5, 6, CONFIG.TILE_SIZE * 0.5);
                 const headMat = new THREE.MeshLambertMaterial({ color: 0x718096 }); // Lighter gray
-                const head = new THREE.Mesh(headGeo, headMat);
+                head = new THREE.Mesh(headGeo, headMat);
                 head.position.y = 11;
                 head.castShadow = true;
                 meshGroup.add(head);
@@ -1564,7 +1586,7 @@
                 const barrelGeo = new THREE.CylinderGeometry(2, 2, 10);
                 barrelGeo.rotateZ(Math.PI / 2);
                 const barrelMat = new THREE.MeshLambertMaterial({ color: 0x2d3748 });
-                const barrel = new THREE.Mesh(barrelGeo, barrelMat);
+                barrel = new THREE.Mesh(barrelGeo, barrelMat);
                 barrel.position.set(8, 11, 0);
                 barrel.castShadow = true;
                 meshGroup.add(barrel);
@@ -1585,12 +1607,13 @@
                 body.position.y = 12;
                 body.castShadow = true;
                 meshGroup.add(body);
+                head = body;
 
                 // Long barrel
                 const barrelGeo = new THREE.CylinderGeometry(1.5, 2, 20);
                 barrelGeo.rotateZ(Math.PI / 2);
                 const barrelMat = new THREE.MeshLambertMaterial({ color: 0x1a202c });
-                const barrel = new THREE.Mesh(barrelGeo, barrelMat);
+                barrel = new THREE.Mesh(barrelGeo, barrelMat);
                 barrel.position.set(15, 14, 0);
                 barrel.castShadow = true;
                 meshGroup.add(barrel);
@@ -1666,7 +1689,9 @@
                 typeKey: typeKey,
                 fireRate: TOWER_TYPES[typeKey].fireRate || 60,
                 lastFired: 0,
-                rangeIndicator: rangeIndicator
+                rangeIndicator: rangeIndicator,
+                barrel: barrel,
+                head: head
             });
 
             // Mark that towers have been placed
@@ -2610,6 +2635,30 @@
             // Tower combat logic
             if (gameState.waveActive && gameState.enemies.length > 0) {
                 gameState.towers.forEach((tower, index) => {
+                    // Rotate tower toward nearest enemy
+                    if (gameState.enemies.length > 0) {
+                        let closestEnemy = null;
+                        let closestDist = Infinity;
+                        const towerPos = tower.mesh.position;
+                        const range = TOWER_TYPES[tower.typeKey].range * CONFIG.TILE_SIZE;
+                        
+                        for (const enemy of gameState.enemies) {
+                            if (!enemy.mesh.parent) continue;
+                            const dist = towerPos.distanceTo(enemy.position);
+                            if (dist < range && dist < closestDist) {
+                                closestDist = dist;
+                                closestEnemy = enemy;
+                            }
+                        }
+                        
+                        // Rotate barrel toward target
+                        if (closestEnemy && tower.barrel) {
+                            const targetPos = closestEnemy.position.clone();
+                            targetPos.y = tower.mesh.position.y;
+                            tower.mesh.lookAt(targetPos);
+                        }
+                    }
+                    
                     const fireRate = tower.fireRate || 1000;
                     if (now - tower.lastFired > fireRate) {
                         createProjectile(index);
