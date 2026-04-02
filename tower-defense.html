@@ -1982,7 +1982,7 @@
             const baseGain = 0.1 * delta; // ~6 per second normally
             const currentRate = baseGain;
             
-            let newChaos = gameState.chaos || 0 + currentRate;
+            let newChaos = (gameState.chaos || 0) + currentRate;
             
             // Update UI
             const fill = document.getElementById('chaos-fill');
