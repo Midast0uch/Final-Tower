@@ -337,6 +337,7 @@
                     <div class="wave-progress-fill" id="wave-progress-fill" style="height:100%; background:linear-gradient(90deg,#51cf66,#40c057); width:0%; border-radius:2px;"></div>
                 </div>
                 <div id="wave-info" style="font-size:12px; font-weight:bold; color:#fff;">Wave 1</div>
+                <div id="wave-preview" style="font-size:10px; color:#aaa; margin-top:4px;"></div>
                 <div id="wave-timer" style="color:#ffd43b; font-size:12px; font-weight:bold; margin-top:2px;">Time: <span id="wave-timer-val">--</span></div>
             </div>
             
@@ -1779,6 +1780,10 @@
             enemy.mesh.castShadow = true;
             scene.add(enemy.mesh);
             
+            // Spawn animation - scale up from 0
+            enemy.mesh.scale.set(0, 0, 0);
+            animateSpawn(enemy.mesh);
+            
             // Add glow mesh
             glowMesh.position.copy(enemy.position);
             scene.add(glowMesh);
@@ -1793,6 +1798,68 @@
             enemy.healthBar = healthBar;
             
             return enemy;
+        }
+        
+        // Enemy spawn animation
+        function animateSpawn(mesh) {
+            let scale = 0;
+            const spawnInterval = setInterval(() => {
+                scale += 0.1;
+                mesh.scale.set(scale, scale, scale);
+                if (scale >= 1) {
+                    mesh.scale.set(1, 1, 1);
+                    clearInterval(spawnInterval);
+                }
+            }, 30);
+        }
+        
+        // Spawn wave announcement with animation
+        function showWaveAnnouncement(waveNum) {
+            const overlay = document.createElement('div');
+            overlay.id = 'wave-overlay';
+            overlay.style.cssText = `
+                position: absolute;
+                top: 0; left: 0; right: 0; bottom: 0;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                background: rgba(0,0,0,0.6);
+                z-index: 2000;
+                animation: fadeInOut 2s ease-in-out forwards;
+            `;
+            
+            // Wave difficulty preview
+            const difficulty = calculateWaveDifficulty(waveNum);
+            const enemyCount = calculateEnemyCount(waveNum);
+            const bossWave = waveNum % 5 === 0;
+            
+            overlay.innerHTML = `
+                <div style="text-align: center; animation: wavePopIn 0.5s ease-out;">
+                    <div style="font-size: 48px; color: #69db7c; font-weight: bold; text-shadow: 0 4px 20px rgba(105,219,124,0.5);">WAVE ${waveNum}</div>
+                    <div style="font-size: 18px; color: #fff; margin-top: 10px;">Get Ready!</div>
+                    <div style="font-size: 14px; color: #ffd43b; margin-top: 8px;">
+                        ${enemyCount} enemies • Difficulty: ${difficulty}
+                        ${bossWave ? '<br><span style="color:#ff6b6b; font-size:18px;">⚠️ BOSS WAVE ⚠️</span>' : ''}
+                    </div>
+                </div>
+            `;
+            document.getElementById('game-container').appendChild(overlay);
+            
+            // Add animation keyframes dynamically
+            if (!document.getElementById('wave-animations')) {
+                const style = document.createElement('style');
+                style.id = 'wave-animations';
+                style.textContent = `
+                    @keyframes wavePopIn {
+                        0% { transform: scale(0.5); opacity: 0; }
+                        70% { transform: scale(1.1); }
+                        100% { transform: scale(1); opacity: 1; }
+                    }
+                `;
+                document.head.appendChild(style);
+            }
+            
+            setTimeout(() => overlay.remove(), 2500);
         }
         
         function updateEnemyHealthBars() {
@@ -2038,6 +2105,7 @@
                     if (dist < 12) {
                         targetEnemy.health -= proj.damage;
                         createExplosion(proj.position.x, proj.position.y, proj.position.z, 0.8);
+                        createHitFlash(targetEnemy.position, proj.trailColor);
                         proj.trail.forEach(t => { if (t.mesh.parent) scene.remove(t.mesh); });
                         scene.remove(proj.mesh);
                         return false;
@@ -2088,26 +2156,46 @@
             if (hitEnemy) {
                 hitEnemy.health -= TOWER_TYPES.SNIPER.damage * tower.damageMult;
                 
-                const laserGeo = new THREE.CylinderGeometry(0.5, 0.5, closestDist, 8);
+                // Enhanced laser beam with glow
+                const laserGeo = new THREE.CylinderGeometry(0.8, 0.8, closestDist, 8);
                 laserGeo.rotateZ(Math.PI / 2);
                 const laserMat = new THREE.MeshBasicMaterial({ 
                     color: 0x4ecdc4, 
                     transparent: true, 
-                    opacity: 0.8 
+                    opacity: 0.9 
                 });
                 const laser = new THREE.Mesh(laserGeo, laserMat);
+                
+                // Outer glow
+                const glowGeo = new THREE.CylinderGeometry(2, 2, closestDist, 8);
+                glowGeo.rotateZ(Math.PI / 2);
+                const glowMat = new THREE.MeshBasicMaterial({ 
+                    color: 0x4ecdc4, 
+                    transparent: true, 
+                    opacity: 0.3 
+                });
+                const glow = new THREE.Mesh(glowGeo, glowMat);
                 
                 const midPoint = tower.mesh.position.clone().add(hitEnemy.position.clone()).multiplyScalar(0.5);
                 midPoint.y += 12;
                 laser.position.copy(midPoint);
+                glow.position.copy(midPoint);
                 laser.lookAt(hitEnemy.position.clone().add(new THREE.Vector3(0, 12, 0)));
+                glow.lookAt(hitEnemy.position.clone().add(new THREE.Vector3(0, 12, 0)));
                 scene.add(laser);
+                scene.add(glow);
+                
+                // Hit flash effect
+                createHitFlash(hitEnemy.position, 0x4ecdc4);
                 
                 setTimeout(() => {
                     if (laser.parent) scene.remove(laser);
+                    if (glow.parent) scene.remove(glow);
                     laser.geometry.dispose();
                     laser.material.dispose();
-                }, 100);
+                    glow.geometry.dispose();
+                    glow.material.dispose();
+                }, 150);
 
                 createExplosion(hitEnemy.position.x, hitEnemy.position.y, hitEnemy.position.z, 0.5);
             } else {
@@ -2179,6 +2267,32 @@
             const flashInterval = setInterval(() => {
                 flash.material.opacity -= 0.15;
                 flash.scale.multiplyScalar(1.1);
+                if (flash.material.opacity <= 0) {
+                    scene.remove(flash);
+                    clearInterval(flashInterval);
+                }
+            }, 30);
+        }
+        
+        // Hit flash effect for sniper/precision hits
+        function createHitFlash(position, color = 0xff6b6b) {
+            const flashGeo = new THREE.RingGeometry(2, 8, 16);
+            const flashMat = new THREE.MeshBasicMaterial({
+                color: color,
+                transparent: true,
+                opacity: 0.8,
+                side: THREE.DoubleSide
+            });
+            const flash = new THREE.Mesh(flashGeo, flashMat);
+            flash.position.copy(position);
+            flash.position.y += 10;
+            flash.rotation.x = -Math.PI / 2;
+            scene.add(flash);
+            
+            // Expand and fade
+            const flashInterval = setInterval(() => {
+                flash.material.opacity -= 0.1;
+                flash.scale.multiplyScalar(1.15);
                 if (flash.material.opacity <= 0) {
                     scene.remove(flash);
                     clearInterval(flashInterval);
@@ -2263,6 +2377,15 @@
             if (waveInfo) {
                 const waveText = gameState.waveActive ? `Wave ${gameState.wave} (Active)` : `Wave ${gameState.wave}`;
                 waveInfo.textContent = waveText;
+            }
+            
+            // Wave preview/difficulty
+            const wavePreview = document.getElementById('wave-preview');
+            if (wavePreview && !gameState.waveActive) {
+                const nextDiff = calculateWaveDifficulty(gameState.wave);
+                const nextCount = calculateEnemyCount(gameState.wave);
+                const isBoss = gameState.wave % 5 === 0;
+                wavePreview.textContent = `${nextCount} enemies • Diff: ${nextDiff}${isBoss ? ' (BOSS)' : ''}`;
             }
 
             const timerEl = document.getElementById('wave-timer');
