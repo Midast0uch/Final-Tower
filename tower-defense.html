@@ -223,7 +223,16 @@
             transition: opacity 0.3s;
             pointer-events: none;
         }
-        #event-popup.show { opacity: 1; }
+        #event-popup.show { 
+            opacity: 1; 
+            display: block;
+            animation: popupPop 0.3s ease-out;
+        }
+        @keyframes popupPop {
+            0% { transform: translate(-50%, -50%) scale(0.5); }
+            70% { transform: translate(-50%, -50%) scale(1.1); }
+            100% { transform: translate(-50%, -50%) scale(1); }
+        }
         .start-btn {
             position: absolute; top: 50%; left: 50%;
             transform: translate(-50%, -50%);
@@ -330,6 +339,9 @@
                 <div id="wave-info" style="font-size:12px; font-weight:bold; color:#fff;">Wave 1</div>
                 <div id="wave-timer" style="color:#ffd43b; font-size:12px; font-weight:bold; margin-top:2px;">Time: <span id="wave-timer-val">--</span></div>
             </div>
+            
+            <!-- Event Popup -->
+            <div id="event-popup" style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); background:linear-gradient(135deg,rgba(255,215,0,0.95),rgba(255,165,0,0.95)); color:#1a1a2e; padding:20px 40px; border-radius:16px; font-size:18px; font-weight:bold; text-align:center; display:none; z-index:100; box-shadow:0 0 30px rgba(255,215,0,0.6); border:3px solid #fff;"></div>
             
             <!-- Top Left - Start Wave Button -->
             <div id="wave-controls" style="position:absolute; top:15px; left:15px; z-index:50;">
@@ -713,7 +725,8 @@
                 preparationStartTime = Date.now(); // Reset prep timer
                 generateNewPath();
                 clearPathTiles();
-                drawPath(currentPath);
+            drawPath(currentPath);
+            createAmbientParticles();
                 updateUI();
             });
             
@@ -787,11 +800,12 @@
                 }
             }
             
-            // Add decorative elements - flowers, mushrooms, rocks
+            // Add decorative elements - flowers, mushrooms, trees
             const flowerColors = [0xff6b9d, 0xffeb3b, 0xffffff, 0xe91e63, 0x9c27b0];
             const flowerGeo = new THREE.SphereGeometry(2, 6, 6);
             
-            for (let i = 0; i < 40; i++) {
+            // Flowers
+            for (let i = 0; i < 35; i++) {
                 const x = Math.floor(Math.random() * CONFIG.MAP_WIDTH);
                 const z = Math.floor(Math.random() * CONFIG.MAP_HEIGHT);
                 const flowerColor = flowerColors[Math.floor(Math.random() * flowerColors.length)];
@@ -805,7 +819,56 @@
                 scene.add(flower);
             }
             
-            // Add small decorative rocks - darker variation
+            // Mushrooms - red caps with white spots
+            const mushGeo = new THREE.SphereGeometry(2.5, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2);
+            const mushStemGeo = new THREE.CylinderGeometry(1, 1.2, 3);
+            for (let i = 0; i < 20; i++) {
+                const x = Math.floor(Math.random() * CONFIG.MAP_WIDTH);
+                const z = Math.floor(Math.random() * CONFIG.MAP_HEIGHT);
+                const mushMat = new THREE.MeshLambertMaterial({ color: 0xff4444 });
+                const mushCap = new THREE.Mesh(mushGeo, mushMat);
+                mushCap.position.set(
+                    x * blockSize + blockSize / 2 + (Math.random() - 0.5) * 12,
+                    4,
+                    z * blockSize + blockSize / 2 + (Math.random() - 0.5) * 12
+                );
+                scene.add(mushCap);
+                const stemMat = new THREE.MeshLambertMaterial({ color: 0xffeecc });
+                const mushStem = new THREE.Mesh(mushStemGeo, stemMat);
+                mushStem.position.set(
+                    x * blockSize + blockSize / 2 + (Math.random() - 0.5) * 12,
+                    2.5,
+                    z * blockSize + blockSize / 2 + (Math.random() - 0.5) * 12
+                );
+                scene.add(mushStem);
+            }
+            
+            // Small trees - pine style
+            const trunkGeo = new THREE.CylinderGeometry(1.5, 2, 8);
+            const trunkMat = new THREE.MeshLambertMaterial({ color: 0x4a3728 });
+            const leavesGeo = new THREE.ConeGeometry(6, 12, 6);
+            const leavesMat = new THREE.MeshLambertMaterial({ color: 0x228b22 });
+            
+            for (let i = 0; i < 12; i++) {
+                const x = Math.floor(Math.random() * CONFIG.MAP_WIDTH);
+                const z = Math.floor(Math.random() * CONFIG.MAP_HEIGHT);
+                const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+                trunk.position.set(
+                    x * blockSize + blockSize / 2 + (Math.random() - 0.5) * 15,
+                    6,
+                    z * blockSize + blockSize / 2 + (Math.random() - 0.5) * 15
+                );
+                scene.add(trunk);
+                const leaves = new THREE.Mesh(leavesGeo, leavesMat);
+                leaves.position.set(
+                    x * blockSize + blockSize / 2 + (Math.random() - 0.5) * 15,
+                    14,
+                    z * blockSize + blockSize / 2 + (Math.random() - 0.5) * 15
+                );
+                scene.add(leaves);
+            }
+            
+            // Small decorative rocks - darker variation
             const rockColors = [0x505050, 0x404040, 0x606060, 0x3a3a3a];
             const rockGeo = new THREE.BoxGeometry(5, 3, 4);
             
@@ -824,6 +887,23 @@
                 scene.add(rock);
             }
             
+            // Grass tufts - small vertical boxes
+            const grassTuftColors = [0x3d6b2d, 0x4a8c3a, 0x2f5c28];
+            for (let i = 0; i < 50; i++) {
+                const x = Math.floor(Math.random() * CONFIG.MAP_WIDTH);
+                const z = Math.floor(Math.random() * CONFIG.MAP_HEIGHT);
+                const tuftColor = grassTuftColors[Math.floor(Math.random() * grassTuftColors.length)];
+                const tuftMat = new THREE.MeshLambertMaterial({ color: tuftColor });
+                const tuftGeo = new THREE.BoxGeometry(1, 4 + Math.random() * 3, 1);
+                const tuft = new THREE.Mesh(tuftGeo, tuftMat);
+                tuft.position.set(
+                    x * blockSize + blockSize / 2 + (Math.random() - 0.5) * 20,
+                    4,
+                    z * blockSize + blockSize / 2 + (Math.random() - 0.5) * 20
+                );
+                scene.add(tuft);
+            }
+            
             // Add some darker grass patches for variety
             const darkGrassGeo = new THREE.BoxGeometry(blockSize - 3, 4.5, blockSize - 3);
             const darkGrassMat = new THREE.MeshLambertMaterial({ color: 0x1a3d15 });
@@ -839,6 +919,9 @@
                 );
                 scene.add(darkPatch);
             }
+            
+            // Add ambient particles - floating fireflies
+            createAmbientParticles();
         }
 
         function drawPath(path) {
@@ -853,8 +936,30 @@
                 const x = p.x * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
                 const z = p.y * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
                 
-                // Clear grass at path position - remove the top grass block
-                // The path is a "burrow" - underground tunnel
+                // Create glowing "mole hole" entrance - visible opening in grass
+                const holeGeo = new THREE.CylinderGeometry(12, 14, 3, 16);
+                const holeMat = new THREE.MeshLambertMaterial({ 
+                    color: 0x1a1008,
+                    emissive: 0xff6b6b,
+                    emissiveIntensity: 0.4
+                });
+                const hole = new THREE.Mesh(holeGeo, holeMat);
+                hole.position.set(x, 1.5, z); // Just below grass surface
+                scene.add(hole);
+                pathSegments.push({ mesh: hole });
+                
+                // Glowing ring around hole entrance
+                const ringGeo = new THREE.TorusGeometry(14, 2, 8, 24);
+                const ringMat = new THREE.MeshLambertMaterial({ 
+                    color: 0xffd43b,
+                    emissive: 0xffd43b,
+                    emissiveIntensity: 0.5
+                });
+                const ring = new THREE.Mesh(ringGeo, ringMat);
+                ring.rotation.x = Math.PI / 2;
+                ring.position.set(x, 3, z); // At grass level
+                scene.add(ring);
+                pathSegments.push({ mesh: ring });
                 
                 // Glass-like tunnel walls - see-through burrow effect
                 const tunnelGeo = new THREE.BoxGeometry(CONFIG.TILE_SIZE - 2, 10, CONFIG.TILE_SIZE - 2);
@@ -1888,34 +1993,57 @@
         function updateTerrain(delta) {
             const time = Date.now() * 0.001;
             pathSegments.forEach((segment, i) => {
-                segment.mesh.position.y += Math.sin(time + i * 0.5) * 0.02;
+                if (segment.mesh) {
+                    segment.mesh.position.y += Math.sin(time + i * 0.5) * 0.02;
+                }
             });
             
             ambientParticles.forEach((p, i) => {
-                p.mesh.position.y += Math.sin(time * 2 + i) * 0.02;
-                p.mesh.position.x += Math.cos(time + i * 0.5) * 0.01;
-                if (p.mesh.position.y > 100) p.mesh.position.y = 0;
+                if (p.mesh && p.mesh.parent) {
+                    // Firefly-style floating motion
+                    const phase = p.phase || 0;
+                    p.mesh.position.y += Math.sin(time * 2 + phase) * 0.15;
+                    p.mesh.position.x += Math.cos(time * 0.5 + phase) * 0.08;
+                    p.mesh.position.z += Math.sin(time * 0.3 + phase) * 0.05;
+                    
+                    // Pulse glow effect
+                    p.mesh.material.opacity = 0.3 + Math.sin(time * 3 + phase) * 0.3;
+                    
+                    // Wrap around map bounds
+                    const maxX = CONFIG.MAP_WIDTH * CONFIG.TILE_SIZE;
+                    const maxZ = CONFIG.MAP_HEIGHT * CONFIG.TILE_SIZE;
+                    if (p.mesh.position.y > 40) p.mesh.position.y = 5;
+                    if (p.mesh.position.x > maxX) p.mesh.position.x = 0;
+                    if (p.mesh.position.z > maxZ) p.mesh.position.z = 0;
+                    if (p.mesh.position.x < 0) p.mesh.position.x = maxX;
+                    if (p.mesh.position.z < 0) p.mesh.position.z = maxZ;
+                }
             });
         }
         
         function createAmbientParticles() {
-            const particleGeo = new THREE.SphereGeometry(0.5, 4, 4);
+            const particleGeo = new THREE.SphereGeometry(1, 6, 6);
             const particleMat = new THREE.MeshBasicMaterial({ 
-                color: 0xffffff, 
+                color: 0xffff44, 
                 transparent: true, 
-                opacity: 0.4 
+                opacity: 0.6 
             });
             
-            for (let i = 0; i < 50; i++) {
+            for (let i = 0; i < 40; i++) {
                 const particle = new THREE.Mesh(particleGeo, particleMat.clone());
                 particle.position.set(
                     Math.random() * CONFIG.MAP_WIDTH * CONFIG.TILE_SIZE,
-                    Math.random() * 80 + 10,
+                    Math.random() * 30 + 8,
                     Math.random() * CONFIG.MAP_HEIGHT * CONFIG.TILE_SIZE
                 );
-                particle.material.opacity = 0.2 + Math.random() * 0.3;
+                particle.material.opacity = 0.3 + Math.random() * 0.4;
+                particle.material.color.setHex(Math.random() > 0.5 ? 0xffff44 : 0x88ff88);
                 scene.add(particle);
-                ambientParticles.push({ mesh: particle, speed: 0.5 + Math.random() * 0.5 });
+                ambientParticles.push({ 
+                    mesh: particle, 
+                    speed: 0.3 + Math.random() * 0.3,
+                    phase: Math.random() * Math.PI * 2
+                });
             }
         }
         
