@@ -103,12 +103,6 @@
             transition: width 0.3s ease;
             border-radius: 4px;
         }
-        .tower-btn.selected { 
-            border-color: #69db7c; 
-            box-shadow: 0 0 30px rgba(105, 219, 124, 0.5), 0 8px 20px rgba(0,0,0,0.4);
-            background: linear-gradient(180deg, rgba(55, 85, 65, 0.95) 0%, rgba(40, 60, 50, 0.95) 100%);
-            animation: selectedPulse 1.5s ease-in-out infinite;
-        }
         .tower-selection {
             display: flex; gap: 12px;
         }
@@ -1969,36 +1963,7 @@
             fill.style.width = `${percent}%`;
         }
 
-	// ==================== WAVE GENERATION ====================
-	function selectPathForWave(waveNum) {
-		const paths = Object.keys(pathOptions);
-		if (!paths || paths.length === 0) return 'pathA';
-		return paths[waveNum % paths.length];
-	}
-
-	// Get waypoint at index from a path
-	function getWaypointAt(index, pathName) {
-		const path = pathOptions[pathName];
-		if (!path || !Array.isArray(path[index])) return null;
-		return { x: path[index].x * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2,
-		         y: path[index].y * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2 };
-	}
-
-	// Get total waypoints in a path
-	function getPathLength(pathName) {
-		const path = pathOptions[pathName];
-		return path ? path.length : 0;
-	}
-
-	function generateWaveEnemies(waveData, waveNum) {
-		if (!waveData || !Array.isArray(waveData)) return [];
-		
-		return waveData.map((enemyDef, idx) => ({
-			...enemyDef,
-			id: `wave${waveNum}-e${idx}`
-		}));
-	}
-
+        // ==================== WAVE GENERATION ====================
         function checkWaveCompletion() {
             if (!gameState.waveActive) return;
             if (!waveEnemies || !currentWave) return;
@@ -2395,21 +2360,7 @@
 
             gameState.enemies.splice(index, 1);
         }
-
-        function updateChaosMeter(delta) {
-            // Simple chaos accumulation
-            const baseGain = 0.1 * delta;
-            let newChaos = (gameState.chaos || 0) + baseGain;
-            
-            const fill = document.getElementById('chaos-fill');
-            const percent = Math.min(100, (newChaos / 25) * 100);
-            fill.style.width = `${percent}%`;
-        }
-
-        function showEventPopup() {
-            // Already implemented above
-        }
-
+        
         // Start the game
         init();
         
