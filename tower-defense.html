@@ -392,11 +392,11 @@
         }
 
         const TOWER_TYPES = {
-            BASIC: { name: 'Basic Tower', cost: 20, damage: 5, range: 7, color: '#ff6b6b', icon: '🔵', fireRate: 60 },
-            SNIPER: { name: 'Sniper', cost: 40, damage: 15, range: 18, color: '#4ecdc4', icon: '🎯', fireRate: 120 },
-            CANNON: { name: 'Cannon', cost: 60, damage: 3, range: 6, area: 4, color: '#ffe66d', icon: '💥', fireRate: 90 },
+            BASIC: { name: 'Basic Tower', cost: 20, damage: 5, range: 7, color: '#ff6b6b', icon: '🔵', fireRate: 800 },
+            SNIPER: { name: 'Sniper', cost: 40, damage: 15, range: 18, color: '#4ecdc4', icon: '🎯', fireRate: 2000 },
+            CANNON: { name: 'Cannon', cost: 60, damage: 8, range: 6, area: 4, color: '#ffe66d', icon: '💥', fireRate: 1500 },
             TRAP: { name: 'Trap', cost: 35, damage: 30, range: 3, oneTime: true, color: '#ff8787', icon: '💣', fireRate: 999999 },
-            SLOW: { name: 'Slow', cost: 45, damage: 2, range: 8, slowFactor: 0.5, color: '#74c0fc', icon: '❄️', fireRate: 30 }
+            SLOW: { name: 'Slow', cost: 45, damage: 2, range: 8, slowFactor: 0.5, color: '#74c0fc', icon: '❄️', fireRate: 500 }
         };
 
         // ==================== GAME STATE ====================
@@ -1579,8 +1579,17 @@
             const mat = new THREE.MeshLambertMaterial({ 
                 color: color,
                 emissive: color,
-                emissiveIntensity: 0.15
+                emissiveIntensity: 0.4 // Stronger glow
             });
+
+            // Add glow effect - slightly larger transparent sphere around enemy
+            const glowGeo = new THREE.SphereGeometry(geo.parameters.radius * 1.4, 8, 8);
+            const glowMat = new THREE.MeshBasicMaterial({
+                color: color,
+                transparent: true,
+                opacity: 0.25
+            });
+            const glowMesh = new THREE.Mesh(glowGeo, glowMat);
 
             const path = currentPath || [];
             
@@ -1598,10 +1607,11 @@
             const targetX = firstWaypoint.x * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
             const targetZ = firstWaypoint.y * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
 
+            // Spawn enemies above ground for visibility
             const enemy = {
                 mesh: new THREE.Mesh(geo, mat),
-                position: new THREE.Vector3(startX, -4, startZ), // In the burrow below surface
-                target: new THREE.Vector3(targetX, -4, targetZ),
+                position: new THREE.Vector3(startX, 8, startZ), // Above ground for visibility
+                target: new THREE.Vector3(targetX, 8, targetZ),
                 path: path,
                 pathIndex: 0,
                 speed: speed,
@@ -1616,6 +1626,11 @@
             enemy.mesh.position.copy(enemy.position);
             enemy.mesh.castShadow = true;
             scene.add(enemy.mesh);
+            
+            // Add glow mesh
+            glowMesh.position.copy(enemy.position);
+            scene.add(glowMesh);
+            enemy.glowMesh = glowMesh;
             
             // Health bar
             const healthBarGeo = new THREE.PlaneGeometry(16, 3);
@@ -1663,7 +1678,7 @@
                     const nextWaypoint = enemy.path[enemy.pathIndex];
                     enemy.target.set(
                         nextWaypoint.x * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2,
-                        -4, // Stay in burrow
+                        8, // Above ground for visibility
                         nextWaypoint.y * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2
                     );
                 }
@@ -1672,6 +1687,7 @@
                     dir.normalize();
                     enemy.position.add(dir.multiplyScalar(enemy.speed));
                     enemy.mesh.position.copy(enemy.position);
+                    if (enemy.glowMesh) enemy.glowMesh.position.copy(enemy.position);
                     enemy.mesh.lookAt(enemy.target);
                 }
             });
@@ -1813,7 +1829,7 @@
                 position: startPos.clone(),
                 target: null,
                 damage: TOWER_TYPES[typeKey].damage * tower.damageMult,
-                fireRate: typeKey === 'CANNON' ? (TOWER_TYPES[typeKey].fireRate || 30) : 60,
+                fireRate: (typeKey === 'CANNON' ? (TOWER_TYPES[typeKey].fireRate || 30) : 60) * 16, // Convert frames to ms
                 lastFired: Date.now(),
                 gridX: tower.gridX,
                 gridZ: tower.gridZ,
@@ -1970,24 +1986,52 @@
             const radius = 20 * intensity;
             const particleCount = 15 * intensity;
             
+            // Explosion colors based on intensity
+            const colors = intensity > 0.8 ? 
+                ['#ff6b6b', '#ff8888', '#ffff44'] : // Boss kill - red/gold
+                ['#ff8844', '#ffaa66', '#ffcc44']; // Normal - orange/gold
+            
             for (let i = 0; i < particleCount; i++) {
                 const angle = Math.random() * Math.PI * 2;
                 const speed = Math.random() * 2 + 0.5;
                 const vx = Math.cos(angle) * speed;
                 const vz = Math.sin(angle) * speed;
                 
+                const color = colors[Math.floor(Math.random() * colors.length)];
+                
                 debrisParticles.push({
                     x: x,
-                    y: y - 15, // Ground level
+                    y: y,
                     z: z,
                     vx: vx,
                     vz: vz,
                     vy: Math.random() * 3 + 2,
                     life: 60 + intensity * 20,
-                    color: `hsl(${Math.random() * 40 + 15}, 80%, 60%)`,
-                    size: radius / particleCount
+                    color: color,
+                    size: radius / particleCount * (0.8 + Math.random() * 0.4)
                 });
             }
+            
+            // Add a flash effect
+            const flashGeo = new THREE.SphereGeometry(8 * intensity, 8, 8);
+            const flashMat = new THREE.MeshBasicMaterial({
+                color: 0xffff88,
+                transparent: true,
+                opacity: 0.8
+            });
+            const flash = new THREE.Mesh(flashGeo, flashMat);
+            flash.position.set(x, y, z);
+            scene.add(flash);
+            
+            // Fade out flash
+            const flashInterval = setInterval(() => {
+                flash.material.opacity -= 0.15;
+                flash.scale.multiplyScalar(1.1);
+                if (flash.material.opacity <= 0) {
+                    scene.remove(flash);
+                    clearInterval(flashInterval);
+                }
+            }, 30);
         }
 
         function updateTerrain(delta) {
@@ -2143,7 +2187,17 @@
                 // Kill any remaining enemies
                 gameState.enemies.forEach(enemy => {
                     if (enemy.mesh && enemy.mesh.parent) {
-                        scene.remove(enemy.mesh);
+            scene.remove(enemy.mesh);
+            
+            // Remove glow mesh
+            if (enemy.glowMesh && enemy.glowMesh.parent) {
+                scene.remove(enemy.glowMesh);
+            }
+            
+            // Remove health bar
+            if (enemy.healthBar && enemy.healthBar.parent) {
+                enemy.mesh.remove(enemy.healthBar);
+            }
                     }
                 });
                 gameState.enemies = [];
