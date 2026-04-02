@@ -316,37 +316,32 @@
         
         <!-- Game UI Layer (hidden initially) -->
         <div id="game-ui" class="hidden">
-            <!-- Energy Ring - Top Center -->
-            <div class="energy-ring-container" style="position:absolute; top:10px; left:50%; transform:translateX(-50%);">
+            <!-- Energy Ring - Top Center (Compact) -->
+            <div class="energy-ring-container" style="position:absolute; top:8px; left:50%; transform:translateX(-50%);">
                 <div class="energy-ring">
-                    <svg width="80" height="80" viewBox="0 0 120 120">
-                        <circle class="energy-ring-bg" cx="60" cy="60" r="52" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="6"></circle>
-                        <circle class="energy-ring-fill" cx="60" cy="60" r="52" fill="none" stroke="#ff6b6b" stroke-width="6" stroke-linecap="round" stroke-dasharray="327" stroke-dashoffset="327" id="energy-ring-progress"></circle>
+                    <svg width="50" height="50" viewBox="0 0 80 80">
+                        <circle class="energy-ring-bg" cx="40" cy="40" r="34" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="4"></circle>
+                        <circle class="energy-ring-fill" cx="40" cy="40" r="34" fill="none" stroke="#ffd43b" stroke-width="4" stroke-linecap="round" stroke-dasharray="214" stroke-dashoffset="214" id="energy-ring-progress"></circle>
                     </svg>
                     <div class="energy-ring-text" style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); text-align:center;">
-                        <div class="value" id="energy-val" style="font-size:16px; font-weight:800; color:#fff;">100</div>
-                        <div class="label" style="font-size:8px; color:rgba(255,255,255,0.7);">ENERGY</div>
+                        <div class="value" id="energy-val" style="font-size:12px; font-weight:800; color:#fff;">80</div>
                     </div>
                 </div>
             </div>
             
-            <!-- Top Right - Lives & Wave -->
-            <div class="hud-panel" style="position:absolute; top:10px; right:10px; min-width:100px; padding:8px;">
-                <div class="lives-container" id="lives-display" style="display:flex; gap:2px; flex-wrap:wrap; margin-bottom:4px;"></div>
-                <div class="wave-progress" style="background:rgba(255,255,255,0.1); border-radius:2px; height:4px; margin-bottom:4px;">
-                    <div class="wave-progress-fill" id="wave-progress-fill" style="height:100%; background:linear-gradient(90deg,#51cf66,#40c057); width:0%; border-radius:2px;"></div>
-                </div>
-                <div id="wave-info" style="font-size:12px; font-weight:bold; color:#fff;">Wave 1</div>
-                <div id="wave-preview" style="font-size:10px; color:#aaa; margin-top:4px;"></div>
-                <div id="wave-timer" style="color:#ffd43b; font-size:12px; font-weight:bold; margin-top:2px;">Time: <span id="wave-timer-val">--</span></div>
+            <!-- Top Right - Lives & Wave (Compact) -->
+            <div class="hud-panel" style="position:absolute; top:8px; right:8px; min-width:80px; padding:6px; font-size:11px;">
+                <div class="lives-container" id="lives-display" style="display:flex; gap:1px; flex-wrap:wrap; margin-bottom:2px;"></div>
+                <div id="wave-info" style="font-size:11px; font-weight:bold; color:#fff;">Wave 1</div>
+                <div id="wave-timer" style="color:#ffd43b; font-size:10px; font-weight:bold; margin-top:2px;"><span id="wave-timer-val">--:--</span></div>
             </div>
             
             <!-- Event Popup -->
             <div id="event-popup" style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); background:linear-gradient(135deg,rgba(255,215,0,0.95),rgba(255,165,0,0.95)); color:#1a1a2e; padding:20px 40px; border-radius:16px; font-size:18px; font-weight:bold; text-align:center; display:none; z-index:100; box-shadow:0 0 30px rgba(255,215,0,0.6); border:3px solid #fff;"></div>
             
-            <!-- Top Left - Start Wave Button -->
-            <div id="wave-controls" style="position:absolute; top:15px; left:15px; z-index:50;">
-                <button id="start-wave-btn" style="padding:10px 20px; font-size:14px; font-weight:bold; background:linear-gradient(135deg,#51cf66,#40c057); color:#fff; border:none; border-radius:15px; cursor:pointer; box-shadow:0 3px 10px rgba(81,207,102,0.4);">START WAVE</button>
+            <!-- Top Left - Start Wave Button (Compact) -->
+            <div id="wave-controls" style="position:absolute; top:10px; left:10px; z-index:50;">
+                <button id="start-wave-btn" style="padding:6px 12px; font-size:11px; font-weight:bold; background:linear-gradient(135deg,#51cf66,#40c057); color:#fff; border:none; border-radius:8px; cursor:pointer;">START WAVE</button>
             </div>
             
             <!-- Bottom - Tower Selection -->
@@ -2480,16 +2475,17 @@
 
         function updateUI() {
             const ring = document.getElementById('energy-ring-progress');
-            const circumference = 327;
+            const circumference = 214; // 2 * pi * 34
             const offset = circumference - (gameState.energy / CONFIG.BASE_ENERGY) * circumference;
             ring.style.strokeDashoffset = offset;
             
             document.getElementById('energy-val').textContent = Math.floor(gameState.energy);
             
             const livesContainer = document.getElementById('lives-display');
+            // Use smaller hearts (font-size 8px)
             const hearts = '❤️'.repeat(Math.max(0, Math.min(gameState.lives, CONFIG.BASE_LIVES)));
             livesContainer.innerHTML = hearts.split('').map((h, i) => 
-                `<span class="heart" style="animation-delay:${i * 0.1}s">${h}</span>`
+                `<span style="font-size:8px;">${h}</span>`
             ).join('');
 
             const waveInfo = document.getElementById('wave-info');
@@ -2512,8 +2508,10 @@
             if (gameState.waveActive && waveStartTime > 0) {
                 const elapsed = Math.floor((Date.now() - waveStartTime) / 1000);
                 const remaining = Math.max(0, waveDuration - elapsed);
+                const minutes = Math.floor(remaining / 60);
+                const seconds = remaining % 60;
                 timerEl.style.display = 'inline-block';
-                timerValEl.textContent = remaining;
+                timerValEl.textContent = `${minutes}:${seconds.toString().padStart(2, '0')}`;
             } else {
                 timerEl.style.display = 'none';
             }
