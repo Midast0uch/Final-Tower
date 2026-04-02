@@ -719,6 +719,7 @@
                 gameState.gameStarted = true;
                 gameState.gamePhase = 'PREPARATION';
                 gameState.preparationTimer = CONFIG.PREPARATION_TIME;
+                preparationStartTime = Date.now(); // Reset prep timer
                 generateNewPath();
                 clearPathTiles();
                 drawPath(currentPath);
@@ -915,6 +916,7 @@
             gameState.gameStarted = true;
             gameState.gamePhase = 'PREPARATION';
             gameState.preparationTimer = CONFIG.PREPARATION_TIME;
+            preparationStartTime = Date.now(); // Reset prep timer
             
             // Generate first path
             generateNewPath();
@@ -1019,7 +1021,7 @@
             const waveData = generateWaveEnemies(gameState.wave);
             currentWaveNum = gameState.wave;
             currentWave = waveData;
-            waveEnemies = waveData.enemies;
+            waveEnemies = [...waveData.enemies]; // Create copy to not modify original
             lastSpawnTime = Date.now();
             
             // Calculate wave duration
@@ -1028,18 +1030,27 @@
             const baseSpeed = 2 + (gameState.wave * 0.2);
             const travelTime = (pathLength / baseSpeed);
             const spawnTime = (waveEnemies.length * waveData.spawnDelay) / 1000;
-            waveDuration = Math.ceil(spawnTime + travelTime + 10);
+            waveDuration = Math.ceil(spawnTime + travelTime + 15); // More time for enemies to complete
             waveStartTime = Date.now();
             
-            document.getElementById('start-wave-btn').classList.add('hidden');
+            // Hide start button during wave
+            document.getElementById('start-wave-btn').style.display = 'none';
             showWaveAnnouncement(gameState.wave);
             updateUI();
+            
+            console.log('Wave started:', gameState.wave, 'enemies:', waveEnemies.length);
         }
         
         function startPreparationPhase() {
             gameState.gamePhase = 'PREPARATION';
             gameState.preparationTimer = CONFIG.PREPARATION_TIME;
             gameState.waveActive = false;
+            preparationStartTime = Date.now(); // Reset prep timer
+            
+            // Show start wave button for next wave
+            const startBtn = document.getElementById('start-wave-btn');
+            startBtn.style.display = 'block';
+            startBtn.textContent = 'START WAVE';
             
             // Track path changes
             gameState.pathChanges = (gameState.pathChanges || 0) + 1;
@@ -1069,7 +1080,8 @@
                 `;
                 if (gameState.energy < type.cost) btn.classList.add('disabled');
                 
-                btn.addEventListener('click', () => {
+                btn.addEventListener('click', (e) => {
+                    e.stopPropagation(); // Prevent bubbling to game-container
                     if (gameState.selectedTower === key) {
                         // Deselect if clicking already selected tower
                         document.querySelectorAll('.tower-btn').forEach(b => b.classList.remove('selected'));
