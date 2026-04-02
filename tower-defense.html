@@ -822,6 +822,7 @@
                     
                     // Top grass layer - varied height
                     const grassHeight = 4 + Math.random() * 2;
+                    const grassGeo = new THREE.BoxGeometry(blockSize - 1, grassHeight, blockSize - 1);
                     const grassColor = grassColors[Math.floor(Math.random() * grassColors.length)];
                     const grassMat = new THREE.MeshLambertMaterial({ 
                         color: grassColor
