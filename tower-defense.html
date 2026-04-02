@@ -328,7 +328,7 @@
                     <div class="wave-progress-fill" id="wave-progress-fill" style="height:100%; background:linear-gradient(90deg,#51cf66,#40c057); width:0%; border-radius:2px;"></div>
                 </div>
                 <div id="wave-info" style="font-size:12px; font-weight:bold; color:#fff;">Wave 1</div>
-                <div id="wave-timer" style="color:#ffd43b; font-size:12px; font-weight:bold; margin-top:2px;"></div>
+                <div id="wave-timer" style="color:#ffd43b; font-size:12px; font-weight:bold; margin-top:2px;">Time: <span id="wave-timer-val">--</span></div>
             </div>
             
             <!-- Top Left - Start Wave Button -->
@@ -1685,12 +1685,17 @@
                 case 'CANNON':
                     color = '#ffe66d';
                     trailColor = 0xffe66d;
-                    geo.scale.set(2.5, 2, 2.5);
+                    // Scale the mesh, not the geometry
                     break;
             }
 
             const mat = new THREE.MeshLambertMaterial({ color: color });
             const projectileMesh = new THREE.Mesh(geo, mat);
+            
+            // Scale CANNON projectiles
+            if (typeKey === 'CANNON') {
+                projectileMesh.scale.set(2.5, 2, 2.5);
+            }
             
             const startPos = tower.mesh.position.clone();
             startPos.y += 12;
