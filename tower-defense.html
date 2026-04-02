@@ -581,15 +581,6 @@
 		return path ? path.length : 0;
 	}
 
-	function generateWaveEnemies(waveEnemiesData, waveNum) {
-		if (!waveEnemiesData || !Array.isArray(waveEnemiesData)) return [];
-		
-		return waveEnemiesData.map((enemyDef, idx) => ({
-			...enemyDef,
-			id: `wave${waveNum}-e${idx}`
-		}));
-	}
-
 	// End of initialization code
 	function init() {
             console.log('Initializing game...');
@@ -862,48 +853,69 @@
                 const x = p.x * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
                 const z = p.y * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
                 
-                // Dig into terrain - darker dirt tunnel look
-                const pathGeo = new THREE.BoxGeometry(CONFIG.TILE_SIZE - 1, 12, CONFIG.TILE_SIZE - 1);
-                const pathMat = new THREE.MeshLambertMaterial({ 
-                    color: pathColors[Math.floor(Math.random() * pathColors.length)],
-                    emissive: 0x1a1008,
-                    emissiveIntensity: 0.15
-                });
-                const pathTile = new THREE.Mesh(pathGeo, pathMat);
-                pathTile.position.set(x, 2, z);
-                scene.add(pathTile);
-                pathSegments.push({ mesh: pathTile });
+                // Clear grass at path position - remove the top grass block
+                // The path is a "burrow" - underground tunnel
                 
-                // Glowing path edges
-                const edgeGeo = new THREE.BoxGeometry(CONFIG.TILE_SIZE, 2, CONFIG.TILE_SIZE);
-                const edgeMat = new THREE.MeshBasicMaterial({ 
-                    color: 0x00ff00,
+                // Glass-like tunnel walls - see-through burrow effect
+                const tunnelGeo = new THREE.BoxGeometry(CONFIG.TILE_SIZE - 2, 10, CONFIG.TILE_SIZE - 2);
+                const tunnelMat = new THREE.MeshLambertMaterial({ 
+                    color: 0x2d1f12,
                     transparent: true,
-                    opacity: 0.3
+                    opacity: 0.4,
+                    emissive: 0x1a1008,
+                    emissiveIntensity: 0.2
                 });
-                const edge = new THREE.Mesh(edgeGeo, edgeMat);
-                edge.position.set(x, 8, z);
-                scene.add(edge);
+                const tunnel = new THREE.Mesh(tunnelGeo, tunnelMat);
+                tunnel.position.set(x, -2, z); // Below surface
+                scene.add(tunnel);
+                pathSegments.push({ mesh: tunnel });
                 
-                // Directional arrow on path tiles
+                // Glowing tunnel floor - where enemies walk
+                const floorGeo = new THREE.BoxGeometry(CONFIG.TILE_SIZE - 3, 1, CONFIG.TILE_SIZE - 3);
+                const floorMat = new THREE.MeshLambertMaterial({ 
+                    color: 0x1a1008,
+                    emissive: 0x3d2817,
+                    emissiveIntensity: 0.3
+                });
+                const floor = new THREE.Mesh(floorGeo, floorMat);
+                floor.position.set(x, -6, z); // Deep in the burrow
+                scene.add(floor);
+                pathSegments.push({ mesh: floor });
+                
+                // Side walls of tunnel - darker dirt
+                const wallGeo = new THREE.BoxGeometry(2, 10, CONFIG.TILE_SIZE);
+                const wallMat = new THREE.MeshLambertMaterial({ color: 0x3d2817 });
+                
+                // Left wall
+                const wallL = new THREE.Mesh(wallGeo, wallMat);
+                wallL.position.set(x - CONFIG.TILE_SIZE/2 + 1, -2, z);
+                scene.add(wallL);
+                
+                // Right wall  
+                const wallR = new THREE.Mesh(wallGeo, wallMat);
+                wallR.position.set(x + CONFIG.TILE_SIZE/2 - 1, -2, z);
+                scene.add(wallR);
+                
+                // Directional marker on tunnel ceiling (visible from above)
                 if (i % 3 === 0 && i < path.length - 1) {
                     const nextP = path[i + 1];
-                    const arrowGeo = new THREE.ConeGeometry(3, 8, 4);
-                    arrowGeo.rotateX(Math.PI / 2);
-                    const arrowMat = new THREE.MeshLambertMaterial({ 
+                    const markerGeo = new THREE.ConeGeometry(2, 5, 4);
+                    markerGeo.rotateX(Math.PI / 2);
+                    const markerMat = new THREE.MeshLambertMaterial({ 
                         color: 0xffd43b, 
                         emissive: 0xffd43b, 
-                        emissiveIntensity: 0.5 
+                        emissiveIntensity: 0.6,
+                        transparent: true,
+                        opacity: 0.7
                     });
-                    const arrow = new THREE.Mesh(arrowGeo, arrowMat);
-                    arrow.position.set(x, 9, z);
-                    arrow.lookAt(
+                    const marker = new THREE.Mesh(markerGeo, markerMat);
+                    marker.position.set(x, 3, z); // Just below surface
+                    marker.lookAt(
                         nextP.x * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2, 
-                        9, 
+                        3, 
                         nextP.y * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2
                     );
-                    arrow.rotateX(Math.PI / 2);
-                    scene.add(arrow);
+                    scene.add(marker);
                 }
             }
         }
@@ -1366,12 +1378,10 @@
                 meshGroup.add(barrel2);
             }
 
-            // Position at tile center
-            meshGroup.position.set(
-                gridX * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2,
-                0,
-                gridZ * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2
-            );
+            // Position at tile center - on top of terrain
+            const tileCenterX = gridX * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
+            const tileCenterZ = gridZ * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
+            meshGroup.position.set(tileCenterX, 6, tileCenterZ);
 
             scene.add(meshGroup);
 
@@ -1485,8 +1495,8 @@
 
             const enemy = {
                 mesh: new THREE.Mesh(geo, mat),
-                position: new THREE.Vector3(startX, 12, startZ),
-                target: new THREE.Vector3(targetX, 12, targetZ),
+                position: new THREE.Vector3(startX, -4, startZ), // In the burrow below surface
+                target: new THREE.Vector3(targetX, -4, targetZ),
                 path: path,
                 pathIndex: 0,
                 speed: speed,
@@ -1548,7 +1558,7 @@
                     const nextWaypoint = enemy.path[enemy.pathIndex];
                     enemy.target.set(
                         nextWaypoint.x * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2,
-                        12,
+                        -4, // Stay in burrow
                         nextWaypoint.y * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2
                     );
                 }
