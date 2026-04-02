@@ -670,12 +670,23 @@
                     cloudGroup.add(cloudPuff);
                 }
                 
+                const startX = Math.random() * CONFIG.MAP_WIDTH * CONFIG.TILE_SIZE;
+                const startZ = Math.random() * CONFIG.MAP_HEIGHT * CONFIG.TILE_SIZE;
                 cloudGroup.position.set(
-                    Math.random() * CONFIG.MAP_WIDTH * CONFIG.TILE_SIZE,
+                    startX,
                     80 + Math.random() * 40,
-                    Math.random() * CONFIG.MAP_HEIGHT * CONFIG.TILE_SIZE
+                    startZ
                 );
                 scene.add(cloudGroup);
+                
+                // Store cloud for animation
+                clouds.push({
+                    group: cloudGroup,
+                    speed: 0.2 + Math.random() * 0.3,
+                    startX: startX,
+                    startZ: startZ,
+                    phase: Math.random() * Math.PI * 2
+                });
             }
 
             // Top-down isometric camera
@@ -1718,13 +1729,13 @@
         }
 
         function spawnEnemy(type, variant, waveNum) {
-			let speed = 1 + (waveNum * 0.08);  // Slower, capped increase
+			let speed = 0.6 + (waveNum * 0.04);  // Much slower, minimal increase
 			let health; let damage; let geo; let color;
 
 			switch(type) {
 				case 'basic':
-					health = 25 + (waveNum * 4);
-					damage = 1 + Math.floor(waveNum / 5);
+					health = 15 + (waveNum * 2);
+					damage = 1;
 					geo = new THREE.SphereGeometry(8, 16, 16);
 					color = '#6B8E23';
 					break;
@@ -2399,6 +2410,22 @@
                 }
             });
             
+            // Animate clouds drifting
+            clouds.forEach((cloud, i) => {
+                if (cloud.group && cloud.group.parent) {
+                    const phase = cloud.phase || 0;
+                    // Drift horizontally with gentle bobbing
+                    cloud.group.position.x += cloud.speed * 0.5;
+                    cloud.group.position.y += Math.sin(time * 0.5 + phase) * 0.1;
+                    
+                    // Wrap around map
+                    const maxX = CONFIG.MAP_WIDTH * CONFIG.TILE_SIZE * 1.5;
+                    if (cloud.group.position.x > maxX) {
+                        cloud.group.position.x = -100;
+                    }
+                }
+            });
+            
             ambientParticles.forEach((p, i) => {
                 if (p.mesh && p.mesh.parent) {
                     // Firefly-style floating motion
@@ -2449,6 +2476,7 @@
         }
         
         let ambientParticles = [];
+        let clouds = [];
 
         function updateUI() {
             const ring = document.getElementById('energy-ring-progress');
