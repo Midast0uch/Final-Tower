@@ -2994,16 +2994,10 @@
         // Start the game
         init();
         
-        // Try to load saved game
-        if (hasSavedGame()) {
-            const startBtn = document.getElementById('start-wave-btn');
-            startBtn.textContent = 'CONTINUE';
-            startBtn.style.background = '#74c0fc';
-            
-            // Load the saved game
-            loadGameState();
-            updateUI();
-        }
+        // Always start fresh - don't load saved games
+        // This ensures player always starts at wave 1 after death
+        // (can re-enable save/load later if needed)
+        console.log('Starting fresh - wave 1');
     </script>
 </body>
 </html>
