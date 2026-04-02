@@ -113,32 +113,28 @@
             display: flex; gap: 12px;
         }
         .tower-btn {
-            width: 100px; height: 130px;
+            width: 65px; height: 75px;
             background: linear-gradient(180deg, rgba(45, 55, 72, 0.95) 0%, rgba(30, 39, 46, 0.95) 100%);
             backdrop-filter: blur(10px);
             border: 2px solid rgba(75, 101, 132, 0.6);
-            border-radius: 16px;
+            border-radius: 10px;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: flex-start;
-            padding: 12px 8px;
+            padding: 6px 4px;
             cursor: pointer;
             transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3), inset 0 1px 0 rgba(255,255,255,0.1);
             position: relative;
             overflow: hidden;
         }
-        .tower-btn::before {
-            content: '';
-            position: absolute;
-            top: 0; left: 0; right: 0; height: 40%;
-            background: linear-gradient(180deg, rgba(255,255,255,0.08) 0%, transparent 100%);
-            border-radius: 14px 14px 50% 50%;
-            pointer-events: none;
-        }
+        .tower-btn .tower-icon { font-size: 22px; margin-bottom: 2px; }
+        .tower-btn .tower-name { font-size: 8px; }
+        .tower-btn .tower-cost { font-size: 10px; }
+        .tower-btn .tower-stats { display: none; }
         .tower-btn:hover { 
-            transform: translateY(-8px) scale(1.02);
+            transform: translateY(-4px) scale(1.02);
             border-color: rgba(105, 219, 124, 0.8);
             box-shadow: 0 12px 25px rgba(105, 219, 124, 0.25), inset 0 1px 0 rgba(255,255,255,0.15);
         }
@@ -208,8 +204,8 @@
             transition: width 0.3s ease;
         }
         .tower-selection {
-            position: absolute; bottom: 30px; left: 50%; transform: translateX(-50%);
-            display: flex; gap: 12px;
+            position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%);
+            display: flex; gap: 6px;
         }
         .energy-popup {
             position: absolute;
@@ -265,6 +261,7 @@
         .hidden { display: none !important; }
         .game-over.hidden { display: none; }
         #login-screen, #main-menu, #game-over-screen { pointer-events: auto; }
+        #wave-controls { display: none; }
         button.restart {
             padding: 15px 40px; font-size: 20px;
             background: #ff6b6b; color: white;
@@ -317,31 +314,36 @@
         <!-- Game UI Layer (hidden initially) -->
         <div id="game-ui" class="hidden">
             <!-- Energy Ring - Top Center -->
-            <div class="energy-ring-container" style="position:absolute; top:20px; left:50%; transform:translateX(-50%);">
+            <div class="energy-ring-container" style="position:absolute; top:10px; left:50%; transform:translateX(-50%);">
                 <div class="energy-ring">
-                    <svg width="100" height="100" viewBox="0 0 120 120">
-                        <circle class="energy-ring-bg" cx="60" cy="60" r="52" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="8"></circle>
-                        <circle class="energy-ring-fill" cx="60" cy="60" r="52" fill="none" stroke="#ff6b6b" stroke-width="8" stroke-linecap="round" stroke-dasharray="327" stroke-dashoffset="327" id="energy-ring-progress"></circle>
+                    <svg width="80" height="80" viewBox="0 0 120 120">
+                        <circle class="energy-ring-bg" cx="60" cy="60" r="52" fill="none" stroke="rgba(255,255,255,0.2)" stroke-width="6"></circle>
+                        <circle class="energy-ring-fill" cx="60" cy="60" r="52" fill="none" stroke="#ff6b6b" stroke-width="6" stroke-linecap="round" stroke-dasharray="327" stroke-dashoffset="327" id="energy-ring-progress"></circle>
                     </svg>
                     <div class="energy-ring-text" style="position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); text-align:center;">
-                        <div class="value" id="energy-val" style="font-size:24px; font-weight:800; color:#fff;">100</div>
-                        <div class="label" style="font-size:10px; color:rgba(255,255,255,0.7);">ENERGY</div>
+                        <div class="value" id="energy-val" style="font-size:16px; font-weight:800; color:#fff;">100</div>
+                        <div class="label" style="font-size:8px; color:rgba(255,255,255,0.7);">ENERGY</div>
                     </div>
                 </div>
             </div>
             
             <!-- Top Right - Lives & Wave -->
-            <div class="hud-panel" style="position:absolute; top:20px; right:20px; min-width:150px;">
-                <div class="lives-container" id="lives-display" style="display:flex; gap:3px; flex-wrap:wrap; margin-bottom:8px;"></div>
-                <div class="wave-progress" style="background:rgba(255,255,255,0.1); border-radius:4px; height:6px; margin-bottom:8px;">
-                    <div class="wave-progress-fill" id="wave-progress-fill" style="height:100%; background:linear-gradient(90deg,#51cf66,#40c057); width:0%; border-radius:4px;"></div>
+            <div class="hud-panel" style="position:absolute; top:10px; right:10px; min-width:100px; padding:8px;">
+                <div class="lives-container" id="lives-display" style="display:flex; gap:2px; flex-wrap:wrap; margin-bottom:4px;"></div>
+                <div class="wave-progress" style="background:rgba(255,255,255,0.1); border-radius:2px; height:4px; margin-bottom:4px;">
+                    <div class="wave-progress-fill" id="wave-progress-fill" style="height:100%; background:linear-gradient(90deg,#51cf66,#40c057); width:0%; border-radius:2px;"></div>
                 </div>
-                <div id="wave-info" style="font-size:16px; font-weight:bold; color:#fff;">Wave 1</div>
-                <div id="wave-timer" style="color:#ffd43b; font-size:18px; font-weight:bold; margin-top:5px;"></div>
+                <div id="wave-info" style="font-size:12px; font-weight:bold; color:#fff;">Wave 1</div>
+                <div id="wave-timer" style="color:#ffd43b; font-size:12px; font-weight:bold; margin-top:2px;"></div>
+            </div>
+            
+            <!-- Top Left - Start Wave Button -->
+            <div id="wave-controls" style="position:absolute; top:15px; left:15px; z-index:50;">
+                <button id="start-wave-btn" style="padding:10px 20px; font-size:14px; font-weight:bold; background:linear-gradient(135deg,#51cf66,#40c057); color:#fff; border:none; border-radius:15px; cursor:pointer; box-shadow:0 3px 10px rgba(81,207,102,0.4);">START WAVE</button>
             </div>
             
             <!-- Bottom - Tower Selection -->
-            <div class="hud-panel tower-selection" id="tower-buttons" style="position:absolute; bottom:20px; left:50%; transform:translateX(-50%); display:flex; gap:12px; background:rgba(30,30,50,0.9); padding:15px 25px; border-radius:20px;"></div>
+            <div class="hud-panel tower-selection" id="tower-buttons" style="position:absolute; bottom:10px; left:50%; transform:translateX(-50%); display:flex; gap:8px; background:rgba(30,30,50,0.9); padding:8px 15px; border-radius:12px;"></div>
         </div>
         
         <!-- Game Over Screen -->
@@ -350,9 +352,6 @@
             <p id="end-reason" style="color:#aaa; font-size:20px; margin-bottom:30px;"></p>
             <button class="restart" onclick="location.reload()" style="padding:15px 40px; font-size:20px; background:#51cf66; color:#fff; border:none; border-radius:25px; cursor:pointer;">PLAY AGAIN</button>
         </div>
-        
-        <!-- Start Wave Button -->
-        <button class="start-btn" id="start-wave-btn" style="display:none; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); padding:20px 50px; font-size:24px; font-weight:bold; background:linear-gradient(135deg,#51cf66,#40c057); color:#fff; border:none; border-radius:30px; cursor:pointer; box-shadow:0 8px 30px rgba(81,207,102,0.5); z-index:1000;">START WAVE</button>
     </div>
 
     <script>
@@ -722,7 +721,7 @@
             playBtn.addEventListener('click', () => {
                 mainMenu.classList.add('hidden');
                 document.getElementById('game-ui').classList.remove('hidden');
-                document.getElementById('start-wave-btn').style.display = 'block';
+                document.getElementById('wave-controls').style.display = 'block';
                 gameState.gameStarted = true;
                 gameState.gamePhase = 'PREPARATION';
                 gameState.preparationTimer = CONFIG.PREPARATION_TIME;
@@ -747,65 +746,112 @@
             // Minecraft-style voxel terrain (blocky cubes)
             const blockSize = CONFIG.TILE_SIZE;
             
-            // Dirt base layer
-            const dirtColors = [0x8B4513, 0xA0522D, 0x6B4423];
-            const stoneColors = [0x696969, 0x787878, 0x505050];
-            const grassColors = [0x228B22, 0x2E8B57, 0x32CD32];
+            // Enhanced color palette with more variation
+            const dirtColors = [0x8B4513, 0xA0522D, 0x6B4423, 0x5D3A1A, 0x704214];
+            const stoneColors = [0x696969, 0x787878, 0x505050, 0x5a5a5a, 0x4a4a4a];
+            // More varied grass colors - darker greens with hints of yellow/brown
+            const grassColors = [
+                0x2d5a27, 0x3a7a32, 0x1e4d1b, 0x4a8c3a, 0x2a6b22, 
+                0x3d6b2d, 0x1a3d15, 0x4d8c42, 0x2f5c28, 0x386b2f
+            ];
             
-            // Create voxel blocks for terrain
+            // Create voxel blocks for terrain with height variation
             for (let x = 0; x < CONFIG.MAP_WIDTH; x++) {
                 for (let z = 0; z < CONFIG.MAP_HEIGHT; z++) {
                     const worldX = x * blockSize + blockSize / 2;
                     const worldZ = z * blockSize + blockSize / 2;
                     
-                    // Top grass layer
-                    const grassGeo = new THREE.BoxGeometry(blockSize - 1, 4, blockSize - 1);
+                    // Height variation - some tiles slightly raised
+                    const heightVar = Math.random() > 0.85 ? 1 : 0;
+                    
+                    // Top grass layer - varied height
+                    const grassHeight = 4 + Math.random() * 2;
+                    const grassGeo = new THREE.BoxGeometry(blockSize - 1, grassHeight, blockSize - 1);
+                    const grassColor = grassColors[Math.floor(Math.random() * grassColors.length)];
                     const grassMat = new THREE.MeshLambertMaterial({ 
-                        color: grassColors[Math.floor(Math.random() * grassColors.length)]
+                        color: grassColor
                     });
                     const grassBlock = new THREE.Mesh(grassGeo, grassMat);
-                    grassBlock.position.set(worldX, 2, worldZ);
+                    grassBlock.position.set(worldX, 2 + heightVar, worldZ);
                     grassBlock.receiveShadow = true;
                     scene.add(grassBlock);
                     
-                    // Dirt layer below
-                    const dirtGeo = new THREE.BoxGeometry(blockSize - 1, 8, blockSize - 1);
+                    // Dirt layer below - thicker with variation
+                    const dirtHeight = 6 + Math.random() * 4;
+                    const dirtGeo = new THREE.BoxGeometry(blockSize - 1, dirtHeight, blockSize - 1);
+                    const dirtColor = dirtColors[Math.floor(Math.random() * dirtColors.length)];
                     const dirtMat = new THREE.MeshLambertMaterial({ 
-                        color: dirtColors[Math.floor(Math.random() * dirtColors.length)]
+                        color: dirtColor
                     });
                     const dirtBlock = new THREE.Mesh(dirtGeo, dirtMat);
-                    dirtBlock.position.set(worldX, -2, worldZ);
+                    dirtBlock.position.set(worldX, -2 - dirtHeight/2 + 4, worldZ);
                     dirtBlock.receiveShadow = true;
                     scene.add(dirtBlock);
                     
                     // Stone layer at bottom
                     const stoneGeo = new THREE.BoxGeometry(blockSize - 1, 6, blockSize - 1);
+                    const stoneColor = stoneColors[Math.floor(Math.random() * stoneColors.length)];
                     const stoneMat = new THREE.MeshLambertMaterial({ 
-                        color: stoneColors[Math.floor(Math.random() * stoneColors.length)]
+                        color: stoneColor
                     });
                     const stoneBlock = new THREE.Mesh(stoneGeo, stoneMat);
-                    stoneBlock.position.set(worldX, -8, worldZ);
+                    stoneBlock.position.set(worldX, -8 - 3, worldZ);
                     stoneBlock.receiveShadow = true;
                     scene.add(stoneBlock);
                 }
             }
             
-            // Add decorative stones
-            const decorGeo = new THREE.BoxGeometry(6, 4, 5);
-            const decorMat = new THREE.MeshLambertMaterial({ color: 0x808080 });
+            // Add decorative elements - flowers, mushrooms, rocks
+            const flowerColors = [0xff6b9d, 0xffeb3b, 0xffffff, 0xe91e63, 0x9c27b0];
+            const flowerGeo = new THREE.SphereGeometry(2, 6, 6);
             
-            for (let i = 0; i < 30; i++) {
+            for (let i = 0; i < 40; i++) {
                 const x = Math.floor(Math.random() * CONFIG.MAP_WIDTH);
                 const z = Math.floor(Math.random() * CONFIG.MAP_HEIGHT);
-                
-                const decor = new THREE.Mesh(decorGeo, decorMat);
-                decor.position.set(
+                const flowerColor = flowerColors[Math.floor(Math.random() * flowerColors.length)];
+                const flowerMat = new THREE.MeshLambertMaterial({ color: flowerColor });
+                const flower = new THREE.Mesh(flowerGeo, flowerMat);
+                flower.position.set(
+                    x * blockSize + blockSize / 2 + (Math.random() - 0.5) * 10,
+                    5,
+                    z * blockSize + blockSize / 2 + (Math.random() - 0.5) * 10
+                );
+                scene.add(flower);
+            }
+            
+            // Add small decorative rocks - darker variation
+            const rockColors = [0x505050, 0x404040, 0x606060, 0x3a3a3a];
+            const rockGeo = new THREE.BoxGeometry(5, 3, 4);
+            
+            for (let i = 0; i < 25; i++) {
+                const x = Math.floor(Math.random() * CONFIG.MAP_WIDTH);
+                const z = Math.floor(Math.random() * CONFIG.MAP_HEIGHT);
+                const rockColor = rockColors[Math.floor(Math.random() * rockColors.length)];
+                const rockMat = new THREE.MeshLambertMaterial({ color: rockColor });
+                const rock = new THREE.Mesh(rockGeo, rockMat);
+                rock.position.set(
+                    x * blockSize + blockSize / 2 + (Math.random() - 0.5) * 15,
+                    3,
+                    z * blockSize + blockSize / 2 + (Math.random() - 0.5) * 15
+                );
+                rock.rotation.y = Math.random() * Math.PI;
+                scene.add(rock);
+            }
+            
+            // Add some darker grass patches for variety
+            const darkGrassGeo = new THREE.BoxGeometry(blockSize - 3, 4.5, blockSize - 3);
+            const darkGrassMat = new THREE.MeshLambertMaterial({ color: 0x1a3d15 });
+            
+            for (let i = 0; i < 15; i++) {
+                const x = Math.floor(Math.random() * CONFIG.MAP_WIDTH);
+                const z = Math.floor(Math.random() * CONFIG.MAP_HEIGHT);
+                const darkPatch = new THREE.Mesh(darkGrassGeo, darkGrassMat);
+                darkPatch.position.set(
                     x * blockSize + blockSize / 2,
-                    4,
+                    2.5,
                     z * blockSize + blockSize / 2
                 );
-                decor.rotation.y = Math.random() * Math.PI;
-                scene.add(decor);
+                scene.add(darkPatch);
             }
         }
 
@@ -1048,7 +1094,6 @@
             // Start wave button - game flow: START GAME -> place towers -> START WAVE -> enemies
             const startBtn = document.getElementById('start-wave-btn');
             startBtn.textContent = 'START GAME';
-            startBtn.style.background = '#69db7c';
             
             startBtn.addEventListener('click', () => {
                 if (gameState.gamePhase === 'GAME_OVER') {
@@ -1059,7 +1104,7 @@
                 if (!gameState.gameStarted) {
                     // First click - start game
                     startGame();
-                    startBtn.textContent = `WAVE ${gameState.wave} - ${gameState.preparationTimer}s`;
+                    startBtn.textContent = 'START WAVE';
                 } else if (gameState.gamePhase === 'PREPARATION') {
                     // Click during preparation - start wave early
                     startWaveActive();
