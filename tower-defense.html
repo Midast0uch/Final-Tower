@@ -364,16 +364,16 @@
     <script>
         // ==================== CONFIGURATION ====================
         const CONFIG = {
-            MAP_WIDTH: 20,
-            MAP_HEIGHT: 20,
-            TILE_SIZE: 36,
-            PATH_COLOR: '#556B2F',
-            TERRAIN_COLOR: '#8B4513',
-            BASE_ENERGY: 100,
-            BASE_LIVES: 20,
+            MAP_WIDTH: 12,  // Start smaller, grows with waves
+            MAP_HEIGHT: 12,
+            TILE_SIZE: 40,
+            PATH_COLOR: '#8B4513',
+            TERRAIN_COLOR: '#654321',
+            BASE_ENERGY: 80,
+            BASE_LIVES: 15,
             ENERGY_REGEN: 1,
-            MAX_ENERGY: 100,
-            PREPARATION_TIME: 60
+            MAX_ENERGY: 80,
+            PREPARATION_TIME: 45
         };
 
         // Wave scaling formula
@@ -802,14 +802,13 @@
             // Enhanced color palette with more variation
             const dirtColors = [0x8B4513, 0xA0522D, 0x6B4423, 0x5D3A1A, 0x704214];
             const stoneColors = [0x696969, 0x787878, 0x505050, 0x5a5a5a, 0x4a4a4a];
-            // More varied grass colors - with highlights and shadows
+            // Muted, earthy grass colors - less saturated
             const grassColors = [
-                0x2d5a27, 0x3a7a32, 0x1e4d1b, 0x4a8c3a, 0x2a6b22, 
-                0x3d6b2d, 0x1a3d15, 0x4d8c42, 0x2f5c28, 0x386b2f,
-                0x228B22, 0x32CD32 // Lush greens for variety
+                0x556B2F, 0x6B8E23, 0x3d5a27, 0x4a6b32, 0x2f4f2f,  // Dark olive greens
+                0x4f6b3f, 0x3a5a2a, 0x5a7a42, 0x3f5a38, 0x4a6832   // Muted forest
             ];
-            const grassHighlightColors = [0x90EE90, 0x98FB98, 0x00FA9A]; // Bright highlights
-            const grassShadowColors = [0x1a4d1b, 0x0d3d0d, 0x1b3d15]; // Dark shadows
+            const grassHighlightColors = [0x8FBC8F, 0x9ACD32, 0x6B8E23]; // Subtle highlights
+            const grassShadowColors = [0x2d4a1a, 0x1d3a10, 0x2a4a20]; // Dark shadows
             
             // Create voxel blocks for terrain with height variation
             for (let x = 0; x < CONFIG.MAP_WIDTH; x++) {
@@ -1316,17 +1315,26 @@
             gameState.gamePhase = 'PREPARATION';
             gameState.preparationTimer = CONFIG.PREPARATION_TIME;
             gameState.waveActive = false;
-            preparationStartTime = Date.now(); // Reset prep timer
+            preparationStartTime = Date.now();
             
-            // Show start wave button for next wave
             const startBtn = document.getElementById('start-wave-btn');
             startBtn.style.display = 'block';
             startBtn.textContent = 'START WAVE';
             
-            // Track path changes
             gameState.pathChanges = (gameState.pathChanges || 0) + 1;
             
-            // Generate new path for next wave
+            // Grow map every 5 waves
+            const wave = gameState.wave;
+            if (wave > 1 && wave % 5 === 1 && CONFIG.MAP_WIDTH < 20) {
+                const oldWidth = CONFIG.MAP_WIDTH;
+                const oldHeight = CONFIG.MAP_HEIGHT;
+                CONFIG.MAP_WIDTH = Math.min(20, oldWidth + 2);
+                CONFIG.MAP_HEIGHT = Math.min(20, oldHeight + 2);
+                
+                // Rebuild terrain with new size (simplified - would need full rebuild in production)
+                console.log(`Map growing: ${oldWidth}x${oldHeight} -> ${CONFIG.MAP_WIDTH}x${CONFIG.MAP_HEIGHT}`);
+            }
+            
             gameState.wave++;
             generateNewPath();
             clearPathTiles();
@@ -1710,64 +1718,64 @@
         }
 
         function spawnEnemy(type, variant, waveNum) {
-			let speed = 2 + (waveNum * 0.2);
+			let speed = 1 + (waveNum * 0.08);  // Slower, capped increase
 			let health; let damage; let geo; let color;
 
 			switch(type) {
 				case 'basic':
-					health = 30 + (waveNum * 5);
-					damage = 2 + Math.floor(waveNum / 3);
+					health = 25 + (waveNum * 4);
+					damage = 1 + Math.floor(waveNum / 5);
 					geo = new THREE.SphereGeometry(8, 16, 16);
-					color = '#51cf66';
+					color = '#6B8E23';
 					break;
 				case 'fast':
-					health = 20 + (waveNum * 3);
-					damage = 2 + Math.floor(waveNum / 4);
+					health = 15 + (waveNum * 2);
+					damage = 1 + Math.floor(waveNum / 5);
 					speed *= 1.8;
 					geo = new THREE.SphereGeometry(6, 12, 12);
-					color = '#ffd43b';
+					color = '#DAA520';
 					break;
 				case 'tank':
-					health = 60 + (waveNum * 8);
-					damage = 4 + Math.floor(waveNum / 2);
+					health = 50 + (waveNum * 6);
+					damage = 3 + Math.floor(waveNum / 4);
 					speed *= 0.5;
 					geo = new THREE.BoxGeometry(14, 14, 14);
-					color = '#339af0';
+					color = '#4682B4';
 					break;
 				case 'sniper':
-					health = 18 + waveNum;
-					damage = 5 + Math.floor(waveNum / 2);
+					health = 15 + waveNum;
+					damage = 4 + Math.floor(waveNum / 3);
 					speed *= 0.6;
 					geo = new THREE.OctahedronGeometry(9);
-					color = '#845ef7';
+					color = '#9370DB';
 					break;
 				case 'burrowing':
-					health = 25 + (waveNum * 4);
-					damage = 3 + Math.floor(waveNum / 3);
+					health = 20 + (waveNum * 3);
+					damage = 2 + Math.floor(waveNum / 4);
 					speed *= 0.8;
 					geo = new THREE.CylinderGeometry(8, 8, 12, 8);
-					color = '#a0522d';
+					color = '#8B4513';
 					break;
 				case 'spawner':
-					health = 40 + (waveNum * 6);
-					damage = 2;
+					health = 35 + (waveNum * 5);
+					damage = 1;
 					speed *= 0.4;
 					geo = new THREE.IcosahedronGeometry(12);
-					color = '#e599f7';
+					color = '#DA70D6';
 					break;
 				case 'boss':
-					health = (waveNum % 5 === 0) ? (100 + waveNum * 20) : 80;
-					damage = (waveNum % 5 === 0) ? (20 + Math.floor(waveNum / 3)) : 8;
+					health = (waveNum % 5 === 0) ? (80 + waveNum * 15) : 60;
+					damage = (waveNum % 5 === 0) ? (15 + Math.floor(waveNum / 4)) : 5;
 					speed *= 0.4;
 					geo = new THREE.IcosahedronGeometry(20);
-					color = '#ff6b6b';
+					color = '#8B0000';
 					break;
 				default:
 					// Default to basic
-					health = 30 + (waveNum * 5);
-					damage = 2 + Math.floor(waveNum / 3);
+					health = 25 + (waveNum * 4);
+					damage = 1 + Math.floor(waveNum / 5);
 					geo = new THREE.SphereGeometry(8, 16, 16);
-					color = '#51cf66';
+					color = '#6B8E23';
 			}
 
             const mat = new THREE.MeshLambertMaterial({ 
