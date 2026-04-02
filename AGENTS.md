@@ -1,36 +1,86 @@
-# Agent Guidelines for Tower Defense Game
+# AGENTS.md — Tower Defense Game
 
-## Overview
-This document provides guidelines for AI agents working on the Tower Defense game project.
-It covers development workflows, code standards, and project-specific practices.
+Primary instructions for AI agents working on the Tower Defense project.  
+This file never needs manual updates — hooks and bootstrap scripts fetch live state from the coordinate database where applicable.
 
-## Project Structure
-- `tower-defense.html`: Main game file containing HTML, CSS, and JavaScript
-- No build system - the game runs directly in a browser
-- Uses Three.js library via CDN for 3D rendering
+## WHAT THIS PROJECT IS
+A browser-based 3D Tower Defense game built as a single `tower-defense.html` file.  
+It uses Three.js (via CDN) for rendering, with cartoon/vibrant visuals, tower placement on grass tiles, enemy pathfinding, waves, energy/seals/lives resources, and progressive path variety.
 
-## Development Workflow
+**Build objective**: Deliver a **fully functional Tower Defense game** with **all features implemented** and **complete UI/UX design working** (tower selection, placement validation, wave system, resource management, enemy AI, combat, win/loss conditions, visual feedback, and polished player experience).
+
+Full roadmap and goals live in: `bootstrap/GOALS.md` (if present) or defined in this document.
+
+**Project Locations**
+- Main game: `opencode-test/tower defense`
+- Bootstrap scripts & coordinate system: `opencode-test/bootstrap`
+
+## STEP 0 — RUN THIS BEFORE ANYTHING ELSE
+```bash
+python bootstrap/session_start.py
+```
+Reads the live coordinate database. Tells you current gate/phase, permanent landmarks, gradient warnings, active tasks, and where the last session left off.
+
+**Do not plan, do not edit files, do not read code until you have run this.**
+
+## STEP 1 — CHECK AVAILABLE WORK
+```bash
+python bootstrap/agent_context.py
+```
+Shows what's available to build, what other agents are currently working on, and relevant warnings. Use this to decide what to work on this session.
+
+## STEP 1.5 — NAVIGATE THE GRAPH BEFORE TOUCHING ANY FILE
+The coordinate database is a navigation instrument with semantic, pheromone, and episodic layers.
+
+**Semantic layer (what IS true — always current):**
+```bash
+python bootstrap/query_graph.py --file tower-defense.html
+```
+Shows topology, trajectory, confidence, and reinforced edges for the file.
+
+**Pheromone routes (where to go):**
+```bash
+python bootstrap/query_graph.py --routes
+```
+
+**High-signal failures (what not to repeat):**
+```bash
+python bootstrap/query_graph.py --failures
+```
+
+**Episodic layer:**
+```bash
+python bootstrap/query_graph.py --recent
+python bootstrap/query_graph.py --summary
+```
+
+## PLATFORM NOTES
+- Primary development: Windows + browser (Chrome/Firefox recommended)
+- Use local HTTP server for testing:
+  ```bash
+  python -m http.server 8080
+  ```
+  Then open: http://localhost:8080/tower-defense.html
+- Alternatively, use VS Code Live Server extension.
+
+## DEVELOPMENT WORKFLOW
 
 ### Getting Started
-1. Open `tower-defense.html` in a web browser to play
-2. For development, use a local HTTP server to avoid file:// restrictions:
-   ```bash
-   # Python 3
-   python -m http.server 8080
-   # Then visit: http://localhost:8080/tower-defense.html
-   ```
-3. Alternatively, use VS Code Live Server extension
+1. Run `python bootstrap/session_start.py`
+2. Check available work with `python bootstrap/agent_context.py`
+3. Navigate to `opencode-test/tower defense`
+4. Open `tower-defense.html` in browser (via local server)
 
 ### Making Changes
-1. Edit `tower-defense.html` directly
-2. Refresh browser to see changes
-3. Use browser developer tools (F12) for debugging
-4. Check console for error messages and logs
+- Edit `tower-defense.html` directly
+- Refresh browser to see changes
+- Use browser developer tools (F12) for debugging
+- Check console for error messages and logs
 
 ### Testing
 - Manual testing through gameplay
 - No automated test suite currently exists
-- To test specific features:
+- Test specific features:
   - Wave progression: Click "START WAVE" button
   - Tower placement: Select tower type and click on grass tiles
   - Enemy behavior: Observe path following and combat
@@ -39,187 +89,108 @@ It covers development workflows, code standards, and project-specific practices.
 ### Debugging
 - Use `console.log()` statements throughout the code for tracing
 - Breakpoints can be set in browser dev tools
-- Common issues to check:
+- Common issues:
   - Three.js initialization errors
   - Pathfinding logic
   - Tower placement validation
   - Enemy spawning and movement
 
-## Code Style Guidelines
+## HOW TO BUILD / MODIFY ANYTHING
+1. Read relevant section of this file + coordinate graph for the file/area
+2. Make minimal, focused change
+3. Refresh browser and manually test the affected feature
+4. Record the action to build the pheromone trail
+
+After any edit:
+```bash
+python bootstrap/record_event.py --type file_edit --file tower-defense.html --desc "what changed and why"
+```
+
+After creating new functionality or fixing a bug:
+```bash
+python bootstrap/record_event.py --type note --desc "reasoning for the change"
+```
+
+## CODE STYLE GUIDELINES
 
 ### JavaScript/ES6 Standards
 - Use ES6+ features (const, let, arrow functions, destructuring)
 - Prefer `const` for variables that won't be reassigned
 - Use `let` for variables that will change
 - Avoid `var` entirely
-- Use template literals for string concatenation
-- Use arrow functions for concise callbacks
-- Use destructuring for object/array access
+- Use template literals, arrow functions, and destructuring
 
 ### Formatting
 - Indentation: 2 spaces
-- Line length: Maximum 100 characters (prefer 80)
-- Braces: Opening brace on same line, closing brace on its own line
-- Semicolons: Required (use semicolons consistently)
-- Quotes: Single quotes for strings, double quotes only for HTML attributes
-- Comma spacing: No space before comma, one space after
-- Operator spacing: Space around operators (`=`, `+`, `-`, etc.)
-- Function spacing: Space between function name and parentheses
+- Line length: max 100 characters (prefer 80)
+- Braces: opening on same line, closing on its own line
+- Semicolons: required
+- Quotes: single quotes for strings (double only for HTML attributes)
+- Space around operators and after commas
 
 ### Naming Conventions
-- Variables: camelCase (e.g., `gameState`, `currentWave`)
-- Functions: camelCase (e.g., `spawnEnemy`, `updateTowers`)
-- Constants: UPPER_SNAKE_CASE (e.g., `CONFIG`, `TOWER_TYPES`)
-- Classes: PascalCase (none currently, but follow if added)
-- Files: kebab-case (only `tower-defense.html` currently)
-- Boolean variables: Prefix with `is`, `has`, `should` (e.g., `isActive`, `hasTower`)
-
-### Import/Dependency Guidelines
-- All dependencies loaded via CDN in HTML head:
-  - Three.js: `https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js`
-  - Google Fonts: `https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@600;700;800&display=swap`
-- No local imports or modules - everything in single file
-- If adding new CDN dependencies, place in `<head>` section
-
-### Types and Data Structures
-- Use JSDoc comments for complex objects and functions
-- Define complex objects with clear structure comments
-- For game state, maintain consistent shape:
-  ```javascript
-  let gameState = {
-    energy: number,
-    seals: number,
-    lives: number,
-    wave: number,
-    waveActive: boolean,
-    selectedTower: string|null,
-    towers: Array,
-    enemies: Array,
-    projectiles: Array,
-    particles: Array,
-    gameOver: boolean,
-    victory: boolean
-  };
-  ```
-- Use Map or Set for lookups when appropriate (e.g., path validation)
-
-### Error Handling
-- Use try/catch for asynchronous operations (though minimal in this game)
-- Validate inputs to functions
-- Check for null/undefined before accessing object properties
-- Provide user feedback via `alert()` or UI updates for recoverable errors
-- Log unexpected errors to console for debugging
-- In game loop, catch errors to prevent crashing:
-  ```javascript
-  function update(time) {
-    try {
-      // game logic
-    } catch (error) {
-      console.error('Game loop error:', error);
-      // Optionally show error to user
-    }
-  }
-  ```
-
-### Performance Considerations
-- Minimize DOM updates - batch UI changes
-- Reuse objects when possible (object pooling for particles, etc.)
-- Limit Three.js object creation in render loop
-- Use requestAnimationFrame for game loop
-- Dispose of Three.js objects when removing from scene
-- Check for memory leaks in long-running sessions
-
-### Commenting
-- Use JSDoc for function definitions:
-  ```javascript
-  /**
-   * Spawns an enemy with given properties
-   * @param {string} type - Enemy type identifier
-   * @param {Object} variant - Enemy variant configuration
-   * @param {number} waveNum - Current wave number for scaling
-   * @returns {Object} Enemy object
-   */
-  function spawnEnemy(type, variant, waveNum) {
-    // ...
-  }
-  ```
-- Use inline comments for complex logic
-- Remove commented-out code before finalizing
-- Keep comments up-to-date with code changes
+- Variables & functions: camelCase (`gameState`, `spawnEnemy`)
+- Constants: UPPER_SNAKE_CASE (`CONFIG`, `TOWER_TYPES`)
+- Boolean variables: prefix with `is`, `has`, `should`
+- Files: kebab-case
 
 ### Three.js Specific Guidelines
-- Always set `castShadow` and `receiveShadow` appropriately for performance
-- Use `MeshBasicMaterial` for unlit objects, `MeshLambertMaterial` for lit
-- Dispose of geometries and materials when removing objects:
-  ```javascript
-  function removeObject(obj) {
-    if (obj.geometry) obj.geometry.dispose();
-    if (obj.material) obj.material.dispose();
-    scene.remove(obj);
-  }
-  ```
-- Keep render loop lean - avoid expensive calculations in update function
-- Use appropriate camera settings for orthographic view:
-  - Set up frustum to match canvas aspect ratio
-  - Position camera to look straight down for 2.5D effect
+- Set `castShadow` / `receiveShadow` appropriately
+- Use `MeshBasicMaterial` for unlit, `MeshLambertMaterial` for lit
+- Dispose geometries and materials when removing objects
+- Keep render loop lean
+- Use orthographic camera looking straight down for 2.5D effect
 
-## Existing Rules
-### Cursor Rules
-No `.cursor/rules/` or `.cursorrules` files found in repository.
+### Performance & Error Handling
+- Minimize DOM updates
+- Reuse objects (object pooling where possible)
+- Use try/catch in game loop to prevent crashes
+- Validate inputs and check for null/undefined
 
-### Copilot Instructions
-No `.github/copilot-instructions.md` file found.
+(Full detailed code style, commenting with JSDoc, game state shape, color palette, and agent-specific instructions for @designer / @fixer / @explorer are maintained in the coordinate database and this document.)
 
-## Agent-Specific Instructions
+## AGENT-SPECIFIC INSTRUCTIONS
 
 ### @designer
-- Focus on visual aesthetics, UI/UX, and player experience
-- Maintain consistent cartoon/vibrant art style
-- Ensure color blindness friendliness in enemy variants
-- Optimize visual feedback (tower placement highlights, enemy hit effects)
-- Follow established color palette:
-  - Primary: #FF6B6B (coral)
-  - Secondary: #4ECDC4 (teal)
-  - Accent: #FFE66D (yellow)
-  - Dark: #2C3E50 (dark blue)
-  - Light: #ECF0F1 (off-white)
-  - Energy: #A8E6CF (mint)
-  - Seal: #DDA0DD (plum)
-  - Danger: #E74C3C (red)
+Focus on visual aesthetics, UI/UX, cartoon/vibrant style, color blindness friendliness, and visual feedback. Follow the established color palette.
 
 ### @fixer
-- Prioritize bug fixes and stability
-- Ensure game loop doesn't crash
-- Validate all user inputs and edge cases
-- Test tower placement boundaries
-- Verify pathfinding and enemy movement
-- Check for memory leaks in long play sessions
-- Maintain backward compatibility with existing saves (if any)
+Prioritize stability, bug fixes, edge cases, memory leaks, and pathfinding/tower placement validation.
 
 ### @explorer
-- When searching for solutions, consider:
-  - Browser compatibility (test in Chrome, Firefox, Safari)
-  - Mobile responsiveness (though primarily desktop)
-  - Performance on lower-end devices
-  - Code readability and maintainability
-  - Following existing code patterns in the file
+Consider browser compatibility, performance, readability, and existing code patterns when researching solutions.
 
-## Commit Guidelines
-- Make small, focused commits
-- Write clear commit messages:
-  - Fix: [description] (for bug fixes)
-  - Add: [description] (for new features)
-  - Refactor: [description] (for code improvements)
-  - Update: [description] (for dependency or asset changes)
-- Include what was changed and why
-- Reference any relevant issues or discussions
-
-## Project-Specific Conventions
+## PROJECT-SPECIFIC CONVENTIONS
 - Wave numbering starts at 1
 - Energy is primary resource for tower placement
-- Seals are earned from boss waves and unlock new towers
-- Lives represent how many enemies can reach the end
-- Game ends when lives reach 0 (loss) or all waves completed (win)
-- Tower placement only allowed on non-path, non-occupied grass tiles
-- Enemies follow predetermined paths that change each wave
-- Every 6 waves, new path options are added for variety
+- Seals earned from boss waves unlock new towers
+- Lives = enemies that reach the end (0 lives = game over)
+- Victory when all waves completed
+- Towers only on non-path, non-occupied grass tiles
+- Paths change each wave; new path options every 6 waves
+
+## COMMIT & RECORDING GUIDELINES
+Make small, focused changes.  
+After meaningful work, always record to the coordinate database so the next agent (or future session) benefits from the pheromone trail and semantic updates.
+
+**Critical Rule**: Never make large unrecorded changes. The coordinate graph is how agents coordinate and avoid repeating mistakes.
+
+## SAFETY RAILS
+- Never delete or overwrite large sections without reading the full current state via the graph
+- Test changes manually in browser after every edit
+- Record every significant action (edit, fix, design decision)
+- Re-run `session_start.py` when switching contexts or after major sessions
+
+**What "Done" Looks Like for a Task**
+- Change works smoothly in browser
+- No console errors
+- Visuals and feedback feel good
+- Action properly recorded in coordinate database
+
+The coordinate database + bootstrap scripts keep agent memory alive across sessions.  
+Read the graph. Build/test small. Record what works. Improve the trail.
+
+**Final Anchor**: The project is complete when the game is **fully functional** with **all features and UI/UX design working** as a polished, playable Tower Defense experience.
+
+Run `python bootstrap/session_start.py` now.
+```
