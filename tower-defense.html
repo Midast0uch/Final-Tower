@@ -664,75 +664,300 @@
 
         class PathGenerator {
             static createPath(waveNumber) {
-                const pathTypes = ['STRAIGHT', 'WINDING', 'BRANCHING', 'MAZE'];
-                const pathType = pathTypes[waveNumber % 4];
-                const pathLength = calculatePathLength(waveNumber);
                 const mapW = CONFIG.MAP_WIDTH;
                 const mapH = CONFIG.MAP_HEIGHT;
+                
+                // More varied path types as waves increase
+                const availableTypes = ['SERPENTINE', 'SPIRAL', 'ZIGZAG', 'RIVER', 'SWITCHBACK'];
+                if (waveNumber >= 3) availableTypes.push('MAZE');
+                if (waveNumber >= 6) availableTypes.push('TENDRIL');
+                if (waveNumber >= 10) availableTypes.push('CHAOS');
+                
+                const pathType = availableTypes[Math.floor(Math.random() * availableTypes.length)];
+                
                 switch(pathType) {
-                    case 'STRAIGHT': return this.generateStraightPath(pathLength, mapW, mapH);
-                    case 'WINDING': return this.generateWindingPath(pathLength, mapW, mapH);
-                    case 'BRANCHING': return this.generateBranchingPath(pathLength, mapW, mapH);
-                    case 'MAZE': return this.generateMazePath(pathLength, mapW, mapH);
-                    default: return this.generateWindingPath(pathLength, mapW, mapH);
+                    case 'SERPENTINE': return this.generateSerpentinePath(mapW, mapH, waveNumber);
+                    case 'SPIRAL': return this.generateSpiralPath(mapW, mapH, waveNumber);
+                    case 'ZIGZAG': return this.generateZigzagPath(mapW, mapH, waveNumber);
+                    case 'RIVER': return this.generateRiverPath(mapW, mapH, waveNumber);
+                    case 'SWITCHBACK': return this.generateSwitchbackPath(mapW, mapH, waveNumber);
+                    case 'MAZE': return this.generateMazePath(mapW, mapH, waveNumber);
+                    case 'TENDRIL': return this.generateTendrilPath(mapW, mapH, waveNumber);
+                    case 'CHAOS': return this.generateChaosPath(mapW, mapH, waveNumber);
+                    default: return this.generateSerpentinePath(mapW, mapH, waveNumber);
                 }
             }
-            static generateStraightPath(length, mapW, mapH) {
+            
+            static generateSerpentinePath(mapW, mapH, wave) {
+                // Snake path that covers most of the map, going back and forth
                 const path = [];
-                const y = Math.floor(mapH / 2) + Math.floor(Math.random() * 3) - 1;
-                for (let x = 0; x < mapW; x++) {
-                    path.push({ x: x, y: Math.max(0, Math.min(mapH - 1, y)) });
-                }
-                return path;
-            }
-            static generateWindingPath(length, mapW, mapH) {
-                const path = [];
-                let x = 0;
-                let y = Math.floor(mapH / 2) + Math.floor(Math.random() * 4) - 2;
-                y = Math.max(1, Math.min(mapH - 2, y));
-                const direction = Math.random() > 0.5 ? 1 : -1;
-                while (x < mapW) {
-                    path.push({ x: x, y: y });
-                    x++;
-                    if (x < mapW && Math.random() < 0.35) {
-                        const newY = y + direction;
-                        if (newY >= 1 && newY <= mapH - 2) {
-                            y = newY;
-                            path.push({ x: x, y: y });
-                        } else {
-                            direction *= -1;
+                const direction = wave % 2 === 0 ? 1 : -1;
+                let y = direction === 1 ? 0 : mapH - 1;
+                
+                for (let row = 0; row < mapH; row++) {
+                    const currentY = direction === 1 ? row : mapH - 1 - row;
+                    if (row % 2 === 0) {
+                        for (let x = 0; x < mapW; x++) {
+                            path.push({ x, y: currentY });
+                        }
+                    } else {
+                        for (let x = mapW - 1; x >= 0; x--) {
+                            path.push({ x, y: currentY });
                         }
                     }
-                }
-                return path;
-            }
-            static generateBranchingPath(length, mapW, mapH) {
-                const path = [];
-                let x = 0;
-                let y = Math.floor(mapH / 2);
-                while (x < mapW) {
-                    path.push({ x: x, y: y });
-                    x++;
-                    if (x < mapW && Math.random() < 0.25) {
-                        y = Math.max(1, Math.min(mapH - 2, y + (Math.random() > 0.5 ? 1 : -1)));
+                    if (row < mapH - 1) {
+                        const nextY = direction === 1 ? row + 1 : mapH - 2 - row;
+                        const lastX = path[path.length - 1].x;
+                        path.push({ x: lastX, y: nextY });
                     }
                 }
                 return path;
             }
-            static generateMazePath(length, mapW, mapH) {
+            
+            static generateSpiralPath(mapW, mapH, wave) {
+                // Spiral from edge toward center then out the other side
                 const path = [];
+                const visited = new Set();
                 let x = 0;
                 let y = Math.floor(mapH / 2);
+                let dx = 1, dy = 0;
+                let steps = 0;
+                const maxSteps = mapW * mapH;
+                
+                while (steps < maxSteps) {
+                    const key = `${x},${y}`;
+                    if (x < 0 || x >= mapW || y < 0 || y >= mapH || visited.has(key)) {
+                        // Try to turn
+                        const turns = [{ dx: 0, dy: 1 }, { dx: 0, dy: -1 }, { dx: 1, dy: 0 }, { dx: -1, dy: 0 }];
+                        let turned = false;
+                        for (const t of turns) {
+                            const nx = x + t.dx;
+                            const ny = y + t.dy;
+                            const nkey = `${nx},${ny}`;
+                            if (nx >= 0 && nx < mapW && ny >= 0 && ny < mapH && !visited.has(nkey)) {
+                                dx = t.dx; dy = t.dy;
+                                turned = true;
+                                break;
+                            }
+                        }
+                        if (!turned) break;
+                        continue;
+                    }
+                    visited.add(key);
+                    path.push({ x, y });
+                    x += dx;
+                    y += dy;
+                    steps++;
+                }
+                return path.length >= 3 ? path : this.generateSerpentinePath(mapW, mapH, wave);
+            }
+            
+            static generateZigzagPath(mapW, mapH, wave) {
+                // Sharp zigzag that changes direction frequently
+                const path = [];
+                let x = 0;
+                let y = Math.floor(Math.random() * mapH);
+                let dir = Math.random() > 0.5 ? 1 : -1;
+                let zigCount = 0;
+                const maxZigs = 3 + Math.floor(Math.random() * 4);
+                
                 while (x < mapW) {
-                    path.push({ x: x, y: y });
-                    const rand = Math.random();
-                    if (rand < 0.35) { x++; }
-                    else if (rand < 0.5 && y > 1) { y--; }
-                    else if (rand < 0.65 && y < mapH - 2) { y++; }
-                    else { x++; }
+                    path.push({ x, y });
+                    if (Math.random() < 0.4 && zigCount < maxZigs) {
+                        // Change vertical direction
+                        dir *= -1;
+                        zigCount++;
+                    }
+                    const newY = y + dir;
+                    if (newY >= 0 && newY < mapH) {
+                        y = newY;
+                    } else {
+                        dir *= -1;
+                    }
+                    if (Math.random() < 0.7) {
+                        x++;
+                    }
+                }
+                // Ensure we reach the right edge
+                while (x < mapW) {
+                    path.push({ x, y: Math.max(0, Math.min(mapH - 1, y)) });
+                    x++;
                 }
                 return path;
             }
+            
+            static generateRiverPath(mapW, mapH, wave) {
+                // Winding river-like path with gentle curves
+                const path = [];
+                let x = 0;
+                let y = Math.floor(mapH * (0.2 + Math.random() * 0.6));
+                let curve = (Math.random() - 0.5) * 2;
+                
+                while (x < mapW) {
+                    path.push({ x, y });
+                    // Gradually change curve direction
+                    if (Math.random() < 0.15) {
+                        curve = (Math.random() - 0.5) * 3;
+                    }
+                    y += Math.round(curve);
+                    y = Math.max(0, Math.min(mapH - 1, y));
+                    x++;
+                    // Sometimes add extra vertical tiles for width
+                    if (Math.random() < 0.2 && y + 1 < mapH) {
+                        path.push({ x: x - 1, y: y + 1 });
+                    }
+                }
+                return path;
+            }
+            
+            static generateSwitchbackPath(mapW, mapH, wave) {
+                // Goes up one side, across the top/bottom, down the other
+                const path = [];
+                const side = Math.random() > 0.5 ? 'left' : 'right';
+                
+                if (side === 'left') {
+                    // Go up left edge, across top, down right edge
+                    for (let y = mapH - 1; y >= 0; y--) {
+                        path.push({ x: 0, y });
+                    }
+                    for (let x = 1; x < mapW; x++) {
+                        path.push({ x, y: 0 });
+                    }
+                    for (let y = 1; y < mapH; y++) {
+                        path.push({ x: mapW - 1, y });
+                    }
+                } else {
+                    // Go up right edge, across bottom, down left edge
+                    for (let y = mapH - 1; y >= 0; y--) {
+                        path.push({ x: mapW - 1, y });
+                    }
+                    for (let x = mapW - 2; x >= 0; x--) {
+                        path.push({ x, y: mapH - 1 });
+                    }
+                    for (let y = mapH - 2; y >= 0; y--) {
+                        path.push({ x: 0, y });
+                    }
+                }
+                return path;
+            }
+            
+            static generateMazePath(mapW, mapH, wave) {
+                // Maze-like path with dead-end feel
+                const path = [];
+                const visited = new Set();
+                let x = 0;
+                let y = Math.floor(mapH / 2);
+                let steps = 0;
+                const maxSteps = mapW * mapH * 0.6;
+                
+                while (steps < maxSteps) {
+                    const key = `${x},${y}`;
+                    if (visited.has(key)) break;
+                    visited.add(key);
+                    path.push({ x, y });
+                    
+                    const dirs = [];
+                    if (x + 1 < mapW && !visited.has(`${x+1},${y}`)) dirs.push({ dx: 1, dy: 0 });
+                    if (x - 1 >= 0 && !visited.has(`${x-1},${y}`)) dirs.push({ dx: -1, dy: 0 });
+                    if (y + 1 < mapH && !visited.has(`${x},${y+1}`)) dirs.push({ dx: 0, dy: 1 });
+                    if (y - 1 >= 0 && !visited.has(`${x},${y-1}`)) dirs.push({ dx: 0, dy: -1 });
+                    
+                    if (dirs.length === 0) break;
+                    
+                    // Prefer moving right (toward exit)
+                    const rightDir = dirs.find(d => d.dx === 1);
+                    if (rightDir && Math.random() < 0.4) {
+                        x += rightDir.dx;
+                        y += rightDir.dy;
+                    } else {
+                        const chosen = dirs[Math.floor(Math.random() * dirs.length)];
+                        x += chosen.dx;
+                        y += chosen.dy;
+                    }
+                    steps++;
+                }
+                
+                // Ensure path reaches right edge
+                if (path.length > 0 && path[path.length - 1].x < mapW - 1) {
+                    let lastX = path[path.length - 1].x;
+                    let lastY = path[path.length - 1].y;
+                    for (let xi = lastX + 1; xi < mapW; xi++) {
+                        path.push({ x: xi, y: lastY });
+                    }
+                }
+                return path.length >= 3 ? path : this.generateSerpentinePath(mapW, mapH, wave);
+            }
+            
+            static generateTendrilPath(mapW, mapH, wave) {
+                // Multiple tendrils reaching toward edges - enemies try to escape
+                const path = [];
+                let x = 0;
+                let y = Math.floor(mapH / 2);
+                const edgeBias = Math.random(); // Which edge to favor
+                
+                while (x < mapW) {
+                    path.push({ x, y });
+                    
+                    const rand = Math.random();
+                    if (rand < 0.3) {
+                        // Push toward top edge
+                        if (y > 0) y--;
+                    } else if (rand < 0.6) {
+                        // Push toward bottom edge
+                        if (y < mapH - 1) y++;
+                    } else {
+                        // Move forward
+                        x++;
+                    }
+                }
+                // Ensure right edge reached
+                while (path[path.length - 1].x < mapW - 1) {
+                    const last = path[path.length - 1];
+                    path.push({ x: last.x + 1, y: last.y });
+                }
+                return path;
+            }
+            
+            static generateChaosPath(mapW, mapH, wave) {
+                // Unpredictable chaotic path - for late game
+                const path = [];
+                const visited = new Set();
+                let x = 0;
+                let y = Math.floor(Math.random() * mapH);
+                let steps = 0;
+                const maxSteps = mapW * mapH * 0.7;
+                
+                while (steps < maxSteps) {
+                    const key = `${x},${y}`;
+                    if (visited.has(key)) {
+                        // Force movement
+                        if (x < mapW - 1) x++;
+                        else break;
+                        continue;
+                    }
+                    visited.add(key);
+                    path.push({ x, y });
+                    
+                    // Weighted random: 30% right, 25% up, 25% down, 20% left
+                    const rand = Math.random();
+                    if (rand < 0.3 && x < mapW - 1) x++;
+                    else if (rand < 0.55 && y > 0) y--;
+                    else if (rand < 0.8 && y < mapH - 1) y++;
+                    else if (rand < 1.0 && x > 0) x--;
+                    
+                    steps++;
+                }
+                
+                // Ensure exit
+                if (path.length > 0) {
+                    let last = path[path.length - 1];
+                    for (let xi = last.x + 1; xi < mapW; xi++) {
+                        path.push({ x: xi, y: last.y });
+                    }
+                }
+                return path.length >= 3 ? path : this.generateSerpentinePath(mapW, mapH, wave);
+            }
+            
             static validatePath(path) {
                 if (!path || path.length < 3) return false;
                 if (path[0].x !== 0) return false;
@@ -823,7 +1048,7 @@
                 }
                 attempts++;
             }
-            currentPath = PathGenerator.generateWindingPath(15);
+            currentPath = PathGenerator.generateSerpentinePath(CONFIG.MAP_WIDTH, CONFIG.MAP_HEIGHT, 1);
             pathOptions.mainPath = currentPath;
             return currentPath;
         }
@@ -922,7 +1147,7 @@
             document.getElementById('game-container').appendChild(renderer.domElement);
             buildMap();
             createAmbientParticles();
-            currentPath = PathGenerator.generateWindingPath(15);
+            currentPath = PathGenerator.generateSerpentinePath(CONFIG.MAP_WIDTH, CONFIG.MAP_HEIGHT, 1);
             pathOptions.mainPath = currentPath;
             drawPath(currentPath);
             createUI();
@@ -1033,29 +1258,40 @@
                 water.position.set(x * blockSize + blockSize / 2, 0.5, z * blockSize + blockSize / 2);
                 scene.add(water);
             }
-            const flowerColors = [0xff6b9d, 0xffeb3b, 0xffffff, 0xe91e63, 0x9c27b0];
-            const flowerGeo = new THREE.SphereGeometry(2, 6, 6);
-            for (let i = 0; i < 35; i++) {
+            const flowerColors = [0xff6b9d, 0xffeb3b, 0xffffff, 0xe91e63, 0x9c27b0, 0xff5722, 0x00bcd4];
+            const flowerStemGeo = new THREE.BoxGeometry(1, 4, 1);
+            const flowerStemMat = new THREE.MeshLambertMaterial({ color: 0x2d5a1e });
+            for (let i = 0; i < 40; i++) {
                 const x = Math.floor(Math.random() * CONFIG.MAP_WIDTH);
                 const z = Math.floor(Math.random() * CONFIG.MAP_HEIGHT);
+                const fx = x * blockSize + blockSize / 2;
+                const fz = z * blockSize + blockSize / 2;
+                const stem = new THREE.Mesh(flowerStemGeo, flowerStemMat);
+                stem.position.set(fx, 6, fz);
+                scene.add(stem);
                 const flowerColor = flowerColors[Math.floor(Math.random() * flowerColors.length)];
+                const flowerGeo = new THREE.BoxGeometry(4, 4, 4);
                 const flowerMat = new THREE.MeshLambertMaterial({ color: flowerColor });
                 const flower = new THREE.Mesh(flowerGeo, flowerMat);
-                flower.position.set(x * blockSize + blockSize / 2 + (Math.random() - 0.5) * 10, 5, z * blockSize + blockSize / 2 + (Math.random() - 0.5) * 10);
+                flower.position.set(fx, 9, fz);
                 scene.add(flower);
             }
-            const mushGeo = new THREE.SphereGeometry(2.5, 8, 6, 0, Math.PI * 2, 0, Math.PI / 2);
-            const mushStemGeo = new THREE.CylinderGeometry(1, 1.2, 3);
-            for (let i = 0; i < 20; i++) {
+            const mushCapGeo = new THREE.BoxGeometry(5, 3, 5);
+            const mushStemGeo = new THREE.BoxGeometry(2, 4, 2);
+            const mushColors = [0xff4444, 0xff8800, 0xffcc00, 0xcc44ff];
+            for (let i = 0; i < 25; i++) {
                 const x = Math.floor(Math.random() * CONFIG.MAP_WIDTH);
                 const z = Math.floor(Math.random() * CONFIG.MAP_HEIGHT);
-                const mushMat = new THREE.MeshLambertMaterial({ color: 0xff4444 });
-                const mushCap = new THREE.Mesh(mushGeo, mushMat);
-                mushCap.position.set(x * blockSize + blockSize / 2 + (Math.random() - 0.5) * 12, 4, z * blockSize + blockSize / 2 + (Math.random() - 0.5) * 12);
+                const mx = x * blockSize + blockSize / 2;
+                const mz = z * blockSize + blockSize / 2;
+                const mushColor = mushColors[Math.floor(Math.random() * mushColors.length)];
+                const mushCapMat = new THREE.MeshLambertMaterial({ color: mushColor });
+                const mushCap = new THREE.Mesh(mushCapGeo, mushCapMat);
+                mushCap.position.set(mx, 6, mz);
                 scene.add(mushCap);
                 const stemMat = new THREE.MeshLambertMaterial({ color: 0xffeecc });
                 const mushStem = new THREE.Mesh(mushStemGeo, stemMat);
-                mushStem.position.set(x * blockSize + blockSize / 2 + (Math.random() - 0.5) * 12, 2.5, z * blockSize + blockSize / 2 + (Math.random() - 0.5) * 12);
+                mushStem.position.set(mx, 3, mz);
                 scene.add(mushStem);
             }
             const trunkGeo = new THREE.CylinderGeometry(1.5, 2, 8);
@@ -1065,11 +1301,13 @@
             for (let i = 0; i < 8; i++) {
                 const x = Math.floor(Math.random() * CONFIG.MAP_WIDTH);
                 const z = Math.floor(Math.random() * CONFIG.MAP_HEIGHT);
+                const treeX = x * blockSize + blockSize / 2;
+                const treeZ = z * blockSize + blockSize / 2;
                 const trunk = new THREE.Mesh(trunkGeo, trunkMat);
-                trunk.position.set(x * blockSize + blockSize / 2 + (Math.random() - 0.5) * 15, 6, z * blockSize + blockSize / 2 + (Math.random() - 0.5) * 15);
+                trunk.position.set(treeX, 6, treeZ);
                 scene.add(trunk);
                 const leaves = new THREE.Mesh(leavesGeo, leavesMat);
-                leaves.position.set(x * blockSize + blockSize / 2 + (Math.random() - 0.5) * 15, 14, z * blockSize + blockSize / 2 + (Math.random() - 0.5) * 15);
+                leaves.position.set(treeX, 14, treeZ);
                 scene.add(leaves);
             }
             const trunkGeo2 = new THREE.CylinderGeometry(2, 3, 10);
@@ -1079,13 +1317,15 @@
             for (let i = 0; i < 6; i++) {
                 const x = Math.floor(Math.random() * CONFIG.MAP_WIDTH);
                 const z = Math.floor(Math.random() * CONFIG.MAP_HEIGHT);
+                const treeX = x * blockSize + blockSize / 2;
+                const treeZ = z * blockSize + blockSize / 2;
                 const trunk2 = new THREE.Mesh(trunkGeo2, trunkMat2);
-                trunk2.position.set(x * blockSize + blockSize / 2 + (Math.random() - 0.5) * 15, 7, z * blockSize + blockSize / 2 + (Math.random() - 0.5) * 15);
+                trunk2.position.set(treeX, 7, treeZ);
                 scene.add(trunk2);
                 const canopyColor = canopyColors[Math.floor(Math.random() * canopyColors.length)];
                 const canopyMat = new THREE.MeshLambertMaterial({ color: canopyColor });
                 const canopy = new THREE.Mesh(canopyGeo, canopyMat);
-                canopy.position.set(x * blockSize + blockSize / 2 + (Math.random() - 0.5) * 15, 16, z * blockSize + blockSize / 2 + (Math.random() - 0.5) * 15);
+                canopy.position.set(treeX, 16, treeZ);
                 canopy.scale.set(1, 0.8, 1);
                 scene.add(canopy);
             }
@@ -1108,27 +1348,32 @@
                     scene.add(berry);
                 }
             }
-            const rockColors = [0x505050, 0x404040, 0x606060, 0x3a3a3a];
-            const rockGeo = new THREE.BoxGeometry(5, 3, 4);
-            for (let i = 0; i < 25; i++) {
+            const rockColors = [0x505050, 0x404040, 0x606060, 0x3a3a3a, 0x707070];
+            for (let i = 0; i < 30; i++) {
                 const x = Math.floor(Math.random() * CONFIG.MAP_WIDTH);
                 const z = Math.floor(Math.random() * CONFIG.MAP_HEIGHT);
+                const rx = x * blockSize + blockSize / 2;
+                const rz = z * blockSize + blockSize / 2;
                 const rockColor = rockColors[Math.floor(Math.random() * rockColors.length)];
+                const rockGeo = new THREE.BoxGeometry(4 + Math.random() * 4, 3 + Math.random() * 3, 4 + Math.random() * 4);
                 const rockMat = new THREE.MeshLambertMaterial({ color: rockColor });
                 const rock = new THREE.Mesh(rockGeo, rockMat);
-                rock.position.set(x * blockSize + blockSize / 2 + (Math.random() - 0.5) * 15, 3, z * blockSize + blockSize / 2 + (Math.random() - 0.5) * 15);
+                rock.position.set(rx, 3, rz);
                 rock.rotation.y = Math.random() * Math.PI;
+                rock.castShadow = true;
                 scene.add(rock);
             }
-            const grassTuftColors = [0x3d6b2d, 0x4a8c3a, 0x2f5c28];
-            for (let i = 0; i < 50; i++) {
+            const grassTuftColors = [0x3d6b2d, 0x4a8c3a, 0x2f5c28, 0x5a8c3a];
+            for (let i = 0; i < 60; i++) {
                 const x = Math.floor(Math.random() * CONFIG.MAP_WIDTH);
                 const z = Math.floor(Math.random() * CONFIG.MAP_HEIGHT);
+                const tx = x * blockSize + blockSize / 2;
+                const tz = z * blockSize + blockSize / 2;
                 const tuftColor = grassTuftColors[Math.floor(Math.random() * grassTuftColors.length)];
                 const tuftMat = new THREE.MeshLambertMaterial({ color: tuftColor });
-                const tuftGeo = new THREE.BoxGeometry(1, 4 + Math.random() * 3, 1);
+                const tuftGeo = new THREE.BoxGeometry(2, 5 + Math.random() * 4, 2);
                 const tuft = new THREE.Mesh(tuftGeo, tuftMat);
-                tuft.position.set(x * blockSize + blockSize / 2 + (Math.random() - 0.5) * 20, 4, z * blockSize + blockSize / 2 + (Math.random() - 0.5) * 20);
+                tuft.position.set(tx, 5, tz);
                 scene.add(tuft);
             }
             const darkGrassGeo = new THREE.BoxGeometry(blockSize - 3, 4.5, blockSize - 3);
@@ -1141,70 +1386,333 @@
                 scene.add(darkPatch);
             }
             createAmbientParticles();
+            updateBorderWalls();
+        }
+
+        let borderMeshes = [];
+
+        function updateBorderWalls() {
+            borderMeshes.forEach(m => {
+                scene.remove(m);
+                m.geometry.dispose();
+                m.material.dispose();
+            });
+            borderMeshes = [];
+            
             const borderMat = new THREE.MeshLambertMaterial({ color: 0x3d2817 });
             const borderH = 8;
             const borderW = 4;
             const mapW = CONFIG.MAP_WIDTH * CONFIG.TILE_SIZE;
             const mapH = CONFIG.MAP_HEIGHT * CONFIG.TILE_SIZE;
+            
             const northGeo = new THREE.BoxGeometry(mapW + borderW * 2, borderH, borderW);
             const north = new THREE.Mesh(northGeo, borderMat);
             north.position.set(mapW / 2, borderH / 2, -borderW / 2);
             north.receiveShadow = true;
             scene.add(north);
+            borderMeshes.push(north);
+            
             const south = new THREE.Mesh(northGeo, borderMat);
             south.position.set(mapW / 2, borderH / 2, mapH + borderW / 2);
             south.receiveShadow = true;
             scene.add(south);
+            borderMeshes.push(south);
+            
             const westGeo = new THREE.BoxGeometry(borderW, borderH, mapH);
             const west = new THREE.Mesh(westGeo, borderMat);
             west.position.set(-borderW / 2, borderH / 2, mapH / 2);
             west.receiveShadow = true;
             scene.add(west);
+            borderMeshes.push(west);
+            
             const east = new THREE.Mesh(westGeo, borderMat);
             east.position.set(mapW + borderW / 2, borderH / 2, mapH / 2);
             east.receiveShadow = true;
             scene.add(east);
+            borderMeshes.push(east);
         }
 
         function extendTerrain(oldWidth, oldHeight) {
             const newWidth = CONFIG.MAP_WIDTH;
             const newHeight = CONFIG.MAP_HEIGHT;
+            const tileSize = CONFIG.TILE_SIZE;
+            const blockSize = tileSize;
             
+            // 1. Update border walls to new dimensions
+            updateBorderWalls();
+            
+            // 2. Fill new terrain tiles with rich detail
             for (let x = 0; x < newWidth; x++) {
                 for (let y = 0; y < newHeight; y++) {
                     if (x < oldWidth && y < oldHeight) continue;
                     
-                    const tileX = x * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
-                    const tileZ = y * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
+                    const worldX = x * blockSize + blockSize / 2;
+                    const worldZ = y * blockSize + blockSize / 2;
                     
-                    const tileGroup = new THREE.Group();
+                    // Minecraft-style layered terrain
+                    const heightVar = Math.random() * 2;
+                    const grassColors = [0x228B22, 0x2d8f2d, 0x1a7a1a, 0x32a032, 0x2b8c2b];
+                    const grassColor = grassColors[Math.floor(Math.random() * grassColors.length)];
+                    const grassGeo = new THREE.BoxGeometry(blockSize - 1, 3 + heightVar, blockSize - 1);
+                    const grassMat = new THREE.MeshLambertMaterial({ color: grassColor });
+                    const grassBlock = new THREE.Mesh(grassGeo, grassMat);
+                    grassBlock.position.set(worldX, 1.5 + heightVar / 2, worldZ);
+                    grassBlock.castShadow = true;
+                    grassBlock.receiveShadow = true;
+                    scene.add(grassBlock);
                     
-                    const baseGeo = new THREE.BoxGeometry(CONFIG.TILE_SIZE - 1, 8, CONFIG.TILE_SIZE - 1);
-                    const baseMat = new THREE.MeshLambertMaterial({ color: 0x654321 });
-                    const base = new THREE.Mesh(baseGeo, baseMat);
-                    base.position.y = -4;
-                    base.receiveShadow = true;
-                    tileGroup.add(base);
+                    const dirtColors = [0x654321, 0x8B4513, 0x7a3b10, 0x5c3317];
+                    const dirtColor = dirtColors[Math.floor(Math.random() * dirtColors.length)];
+                    const dirtHeight = 6 + Math.random() * 4;
+                    const dirtGeo = new THREE.BoxGeometry(blockSize - 1, dirtHeight, blockSize - 1);
+                    const dirtMat = new THREE.MeshLambertMaterial({ color: dirtColor });
+                    const dirtBlock = new THREE.Mesh(dirtGeo, dirtMat);
+                    dirtBlock.position.set(worldX, -2 - dirtHeight / 2 + 4, worldZ);
+                    dirtBlock.receiveShadow = true;
+                    scene.add(dirtBlock);
                     
-                    const grassGeo = new THREE.BoxGeometry(CONFIG.TILE_SIZE - 1, 3, CONFIG.TILE_SIZE - 1);
-                    const grassMat = new THREE.MeshLambertMaterial({ color: 0x228B22 });
-                    const grass = new THREE.Mesh(grassGeo, grassMat);
-                    grass.position.y = 1.5;
-                    grass.castShadow = true;
-                    grass.receiveShadow = true;
-                    tileGroup.add(grass);
+                    const stoneColors = [0x696969, 0x7a7a7a, 0x585858, 0x4a4a4a];
+                    const stoneColor = stoneColors[Math.floor(Math.random() * stoneColors.length)];
+                    const stoneGeo = new THREE.BoxGeometry(blockSize - 1, 6, blockSize - 1);
+                    const stoneMat = new THREE.MeshLambertMaterial({ color: stoneColor });
+                    const stoneBlock = new THREE.Mesh(stoneGeo, stoneMat);
+                    stoneBlock.position.set(worldX, -8 - 3, worldZ);
+                    stoneBlock.receiveShadow = true;
+                    scene.add(stoneBlock);
                     
-                    if (Math.random() < 0.3) {
-                        const stoneGeo = new THREE.BoxGeometry(4 + Math.random() * 6, 3, 4 + Math.random() * 6);
-                        const stoneMat = new THREE.MeshLambertMaterial({ color: 0x696969 });
-                        const stone = new THREE.Mesh(stoneGeo, stoneMat);
-                        stone.position.set((Math.random() - 0.5) * 15, 3, (Math.random() - 0.5) * 15);
-                        stone.castShadow = true;
-                        tileGroup.add(stone);
+                    // Grass highlight
+                    if (Math.random() > 0.7) {
+                        const highlightGeo = new THREE.BoxGeometry(blockSize * 0.3, 0.5, blockSize * 0.3);
+                        const highlightColors = [0x3ddc3d, 0x45e845, 0x2ebf2e];
+                        const highlightMat = new THREE.MeshLambertMaterial({ color: highlightColors[Math.floor(Math.random() * highlightColors.length)] });
+                        const highlight = new THREE.Mesh(highlightGeo, highlightMat);
+                        highlight.position.set(worldX + (Math.random() - 0.5) * 10, 4.5 + heightVar, worldZ + (Math.random() - 0.5) * 10);
+                        scene.add(highlight);
                     }
+                }
+            }
+            
+            // 3. Add environmental details to EVERY new tile
+            
+            // Define geometries and materials for reuse
+            const trunkGeo = new THREE.CylinderGeometry(1.5, 2, 8);
+            const trunkMat = new THREE.MeshLambertMaterial({ color: 0x4a3728 });
+            const leavesGeo = new THREE.ConeGeometry(6, 12, 6);
+            const leavesMat = new THREE.MeshLambertMaterial({ color: 0x228b22 });
+            const trunkGeo2 = new THREE.CylinderGeometry(2, 3, 10);
+            const trunkMat2 = new THREE.MeshLambertMaterial({ color: 0x5D4037 });
+            const canopyGeo = new THREE.SphereGeometry(8, 8, 6);
+            const canopyColors = [0x4CAF50, 0x66BB6A, 0x388E3C, 0x2E7D32];
+            const bushGeo = new THREE.SphereGeometry(4, 6, 6);
+            const bushMat = new THREE.MeshLambertMaterial({ color: 0x2E7D32 });
+            const berryColors = [0xE53935, 0x8E24AA, 0x1E88E5];
+            const mushCapGeo = new THREE.BoxGeometry(5, 3, 5);
+            const mushStemGeo = new THREE.BoxGeometry(2, 4, 2);
+            const mushColors = [0xff4444, 0xff8800, 0xffcc00, 0xcc44ff];
+            const rockColors = [0x505050, 0x404040, 0x606060, 0x3a3a3a, 0x707070];
+            const flowerColors = [0xff6b9d, 0xffeb3b, 0xffffff, 0xe91e63, 0x9c27b0, 0xff5722, 0x00bcd4];
+            const flowerStemGeo = new THREE.BoxGeometry(1, 4, 1);
+            const flowerStemMat = new THREE.MeshLambertMaterial({ color: 0x2d5a1e });
+            const waterColors = [0x4FC3F7, 0x29B6F6, 0x03A9F4, 0x0288D1];
+            
+            const worldPos = (gx, gy, offset) => {
+                return {
+                    x: gx * blockSize + blockSize / 2,
+                    z: gy * blockSize + blockSize / 2
+                };
+            };
+            
+            // Iterate over ALL new tiles and give each one something
+            for (let x = 0; x < newWidth; x++) {
+                for (let y = 0; y < newHeight; y++) {
+                    if (x < oldWidth && y < oldHeight) continue;
+                    const pos = worldPos(x, y);
+                    const tileRoll = Math.random();
                     
-                    tileGroup.position.set(tileX, 0, tileZ);
-                    scene.add(tileGroup);
+                    // Every tile gets at least one detail
+                    if (tileRoll < 0.25) {
+                        // Pine tree
+                        const trunk = new THREE.Mesh(trunkGeo, trunkMat);
+                        trunk.position.set(pos.x, 6, pos.z);
+                        scene.add(trunk);
+                        const leaves = new THREE.Mesh(leavesGeo, leavesMat);
+                        leaves.position.set(pos.x, 14, pos.z);
+                        scene.add(leaves);
+                    } else if (tileRoll < 0.40) {
+                        // Oak tree
+                        const trunk2 = new THREE.Mesh(trunkGeo2, trunkMat2);
+                        trunk2.position.set(pos.x, 7, pos.z);
+                        scene.add(trunk2);
+                        const canopyMat = new THREE.MeshLambertMaterial({ color: canopyColors[Math.floor(Math.random() * canopyColors.length)] });
+                        const canopy = new THREE.Mesh(canopyGeo, canopyMat);
+                        canopy.position.set(pos.x, 16, pos.z);
+                        canopy.scale.set(1, 0.8, 1);
+                        scene.add(canopy);
+                    } else if (tileRoll < 0.55) {
+                        // Bush with berries
+                        const bush = new THREE.Mesh(bushGeo, bushMat);
+                        bush.position.set(pos.x, 4, pos.z);
+                        bush.scale.set(1.2, 0.8, 1.2);
+                        scene.add(bush);
+                        for (let j = 0; j < 3; j++) {
+                            const berryGeo = new THREE.BoxGeometry(2, 2, 2);
+                            const berryMat = new THREE.MeshLambertMaterial({ color: berryColors[Math.floor(Math.random() * berryColors.length)] });
+                            const berry = new THREE.Mesh(berryGeo, berryMat);
+                            berry.position.set(pos.x + (j - 1) * 4, 5, pos.z);
+                            scene.add(berry);
+                        }
+                    } else if (tileRoll < 0.65) {
+                        // Mushroom
+                        const mushColor = mushColors[Math.floor(Math.random() * mushColors.length)];
+                        const mushCapMat = new THREE.MeshLambertMaterial({ color: mushColor });
+                        const mushCap = new THREE.Mesh(mushCapGeo, mushCapMat);
+                        mushCap.position.set(pos.x, 6, pos.z);
+                        scene.add(mushCap);
+                        const stemMat = new THREE.MeshLambertMaterial({ color: 0xffeecc });
+                        const mushStem = new THREE.Mesh(mushStemGeo, stemMat);
+                        mushStem.position.set(pos.x, 3, pos.z);
+                        scene.add(mushStem);
+                    } else if (tileRoll < 0.75) {
+                        // Rock cluster
+                        for (let r = 0; r < 2; r++) {
+                            const rockGeo = new THREE.BoxGeometry(4 + Math.random() * 3, 3 + Math.random() * 2, 4 + Math.random() * 3);
+                            const rockMat = new THREE.MeshLambertMaterial({ color: rockColors[Math.floor(Math.random() * rockColors.length)] });
+                            const rock = new THREE.Mesh(rockGeo, rockMat);
+                            rock.position.set(pos.x + (r - 0.5) * 8, 3, pos.z + (r - 0.5) * 6);
+                            rock.rotation.y = Math.random() * Math.PI;
+                            scene.add(rock);
+                        }
+                    } else if (tileRoll < 0.85) {
+                        // Flower patch
+                        for (let f = 0; f < 3; f++) {
+                            const stem = new THREE.Mesh(flowerStemGeo, flowerStemMat);
+                            stem.position.set(pos.x + (f - 1) * 5, 6, pos.z);
+                            scene.add(stem);
+                            const fColor = flowerColors[Math.floor(Math.random() * flowerColors.length)];
+                            const fGeo = new THREE.BoxGeometry(4, 4, 4);
+                            const fMat = new THREE.MeshLambertMaterial({ color: fColor });
+                            const flower = new THREE.Mesh(fGeo, fMat);
+                            flower.position.set(pos.x + (f - 1) * 5, 9, pos.z);
+                            scene.add(flower);
+                        }
+                    } else if (tileRoll < 0.92) {
+                        // Water puddle
+                        const waterGeo = new THREE.BoxGeometry(blockSize * 0.6, 0.5, blockSize * 0.5);
+                        const waterMat = new THREE.MeshLambertMaterial({ color: waterColors[Math.floor(Math.random() * waterColors.length)], transparent: true, opacity: 0.7 });
+                        const water = new THREE.Mesh(waterGeo, waterMat);
+                        water.position.set(pos.x, 0.5, pos.z);
+                        scene.add(water);
+                    }
+                    // 8% chance: tile gets nothing extra (bare grass/dirt/stone)
+                }
+            }
+            
+            // 4. ENVIRONMENTAL HAZARDS - NEW interactive objects
+            
+            // Helper for hazard placement in new area
+            const randNewPos = () => {
+                let hx, hy, attempts = 0;
+                do {
+                    hx = oldWidth + Math.floor(Math.random() * (newWidth - oldWidth));
+                    hy = Math.floor(Math.random() * newHeight);
+                    attempts++;
+                    if (attempts > 50) {
+                        hx = Math.floor(Math.random() * newWidth);
+                        hy = Math.floor(Math.random() * newHeight);
+                        break;
+                    }
+                } while (hx < oldWidth && hy < oldHeight);
+                return { x: hx * blockSize + blockSize / 2, z: hy * blockSize + blockSize / 2 };
+            };
+            
+            // Gas barrels (explode when shot, damage nearby enemies AND towers)
+            const barrelGeo = new THREE.CylinderGeometry(3, 3, 8, 8);
+            const barrelMat = new THREE.MeshLambertMaterial({ color: 0xcc3333 });
+            for (let i = 0; i < 3; i++) {
+                const pos = randNewPos();
+                const barrel = new THREE.Mesh(barrelGeo, barrelMat);
+                barrel.position.set(pos.x, 4, pos.z);
+                barrel.castShadow = true;
+                barrel.userData = {
+                    type: 'gas_barrel',
+                    health: 10,
+                    explosionRadius: 8,
+                    explosionDamage: 25
+                };
+                scene.add(barrel);
+                // Warning stripe
+                const stripeGeo = new THREE.CylinderGeometry(3.1, 3.1, 2, 8);
+                const stripeMat = new THREE.MeshLambertMaterial({ color: 0xffcc00 });
+                const stripe = new THREE.Mesh(stripeGeo, stripeMat);
+                stripe.position.set(pos.x, 4, pos.z);
+                scene.add(stripe);
+            }
+            
+            // Brick walls (destructible obstacles)
+            const brickMat = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+            for (let i = 0; i < 4; i++) {
+                const pos = randNewPos();
+                const wallGroup = new THREE.Group();
+                for (let row = 0; row < 3; row++) {
+                    for (let col = 0; col < 4; col++) {
+                        const brickGeo = new THREE.BoxGeometry(8, 4, 4);
+                        const brick = new THREE.Mesh(brickGeo, brickMat);
+                        brick.position.set(col * 9 - 13.5, row * 5 + 2, 0);
+                        brick.castShadow = true;
+                        wallGroup.add(brick);
+                    }
+                }
+                wallGroup.position.set(pos.x, 0, pos.z);
+                wallGroup.rotation.y = Math.floor(Math.random() * 4) * Math.PI / 2;
+                wallGroup.userData = {
+                    type: 'brick_wall',
+                    health: 40,
+                    maxHealth: 40
+                };
+                scene.add(wallGroup);
+            }
+            
+            // Statue (indestructible landmark, blocks enemies)
+            const statueMat = new THREE.MeshLambertMaterial({ color: 0x9E9E9E });
+            for (let i = 0; i < 2; i++) {
+                const pos = randNewPos();
+                const statueGroup = new THREE.Group();
+                // Base
+                const baseGeo = new THREE.BoxGeometry(10, 4, 10);
+                const base = new THREE.Mesh(baseGeo, statueMat);
+                base.position.y = 2;
+                statueGroup.add(base);
+                // Pillar
+                const pillarGeo = new THREE.CylinderGeometry(3, 3, 12, 8);
+                const pillar = new THREE.Mesh(pillarGeo, statueMat);
+                pillar.position.y = 10;
+                statueGroup.add(pillar);
+                // Head
+                const headGeo = new THREE.SphereGeometry(5, 8, 8);
+                const head = new THREE.Mesh(headGeo, statueMat);
+                head.position.y = 18;
+                statueGroup.add(head);
+                statueGroup.position.set(pos.x, 0, pos.z);
+                statueGroup.userData = {
+                    type: 'statue',
+                    health: 9999,
+                    isIndestructible: true
+                };
+                scene.add(statueGroup);
+            }
+            
+            // River (blocks tower placement, slows enemies)
+            if (Math.random() > 0.5) {
+                const riverLength = 3 + Math.floor(Math.random() * 4);
+                const startX = oldWidth + Math.floor(Math.random() * (newWidth - oldWidth - riverLength));
+                const startY = Math.floor(Math.random() * (newHeight - 2)) + 1;
+                const riverMat = new THREE.MeshLambertMaterial({ color: 0x2196F3, transparent: true, opacity: 0.8 });
+                for (let i = 0; i < riverLength; i++) {
+                    const riverGeo = new THREE.BoxGeometry(blockSize - 2, 1, blockSize - 2);
+                    const river = new THREE.Mesh(riverGeo, riverMat);
+                    river.position.set((startX + i) * blockSize + blockSize / 2, 0.5, startY * blockSize + blockSize / 2);
+                    river.userData = { type: 'river', slowsEnemies: true };
+                    scene.add(river);
                 }
             }
         }
