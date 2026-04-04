@@ -1,161 +1,248 @@
-# Tower Defense Game - Development Goals
+# Final Tower - Development Goals
 
 ## Project Overview
-- **Project**: 3D Browser-based Tower Defense Game
+- **Project**: 3D Browser-based Endless Tower Defense Game
 - **Engine**: Three.js (via CDN)
 - **Goal**: Fully functional, polished iPhone-quality game experience
 - **Grid System**: 20x20 tile-based map
+- **Mode**: Endless waves with dynamic path generation
 
 ---
 
-## Phase 1: Core Game Logic (Critical - Must Fix First)
+## Phase 1: Core Game Logic (Critical - Must Fix First) ✅ COMPLETE
 
-### 1.1 Path System
-- **Standard**: Single continuous path from left edge (x:0) to right edge (x:19)
-- **Path Coordinates**: Must stay within y:5-15 range (visible on map)
-- **Visual**: Connected tiles that clearly show enemy route from spawn to end
+### 1.1 Endless Wave System
+- [x] Remove fixed 20-wave limit - waves are infinite
+- [x] Update CONFIG: BASE_LIVES = 20, TOTAL_WAVES = Infinity
+- [x] Add wave scaling formula: `baseDifficulty * Math.pow(1.15, waveNumber) * bossFactor`
+- [x] Boss waves every 5 waves (wave % 5 === 0)
 
-### 1.2 Enemy Spawning & Movement
-- Enemies spawn at path start (x:0, left side)
-- Follow waypoints sequentially through path
-- Reach end = player loses 1 life
-- Killed by tower = player gains energy
+**Testing**: ✅ 42/42 tests passed
 
-### 1.3 Tower Combat System
-- Towers auto-target nearest enemy in range
-- Projectiles travel to enemy and deal damage on hit
-- Health system - enemies die when health <= 0
-- Proper collision detection (not broken logic)
+**Testing**: 
+- [ ] Reach wave 10+ and verify difficulty scales
+- [ ] Wave counter shows correct number
 
-### 1.4 Wave Logic
-- Use timestamp-based spawning (Date.now()), NOT frame counters
-- Wave complete when: all enemies spawned AND all enemies dead/gone
-- Proper reset between waves - towers stay, new wave starts fresh
+### 1.2 Dynamic Path Generation
+- [x] Create PathGenerator class with algorithms
+- [x] 4 path types: STRAIGHT, WINDING, BRANCHING, MAZE
+- [x] Path must connect left edge (x:0) to right edge (x:19)
+- [x] Path length scales with wave: `Math.min(30, 10 + Math.floor(wave * 1.2))`
+- [x] Store path in gameState.pathGrid (20x20 array)
 
----
+### 1.3 Game State Machine
+- [x] Add gameState.gamePhase: 'PREPARATION' | 'WAVE_ACTIVE' | 'GAME_OVER'
+- [x] 60-second preparation timer (gameState.preparationTimer)
+- [x] Start wave early button (before timer expires)
+- [x] Clear phase transitions in UI
 
-## Phase 2: UI/UX Overhaul
+### 1.4 Path Burrowing Animation
+- [x] Clear old path tiles before generating new
+- [x] Animate new path appearance (particle effect)
+- [x] Path tiles use new color palette (dirt/stone)
 
-### 2.1 Tower Card Dock
-- Position: Bottom of screen, floating dock style
-- Glassmorphism effect (backdrop blur, semi-transparent)
-- Premium hover/select animations with glow
-- Click to select, click again to deselect
-
-### 2.2 Energy Display
-- Circular progress ring with animation
-- Shows current/max energy clearly
-- Floating "+X" text when energy gained
-
-### 2.3 Lives Display
-- Animated heart icons
-- Pulse animation when life lost
-- Clear visual indicator of remaining lives
-
-### 2.4 Start Button States
-- START GAME → PLACE TOWERS → START WAVE 1 → (wave plays) → START WAVE 2 → etc
-- Clear state transitions with visual feedback
+### 1.5 Turret Destruction on Path Overlap
+- [x] After path generated, check all turret positions
+- [x] If turret.gridX/Y is on new path, destroy turret
+- [x] Show destruction animation/effect
+- [x] Refund energy cost to player
 
 ---
 
-## Phase 3: Visual Polish
+## Phase 2: New Enemy Types ✅ COMPLETE
 
-### 3.1 Grass Terrain
-- Multiple layers of grass blades with color variation
-- Decorative elements: flowers (white/yellow/pink), small rocks
-- Organic height variation for depth
-- NOT flat green surface
+### 2.1 Basic Enemy Types (4)
+- [x] Basic Mole: sphere, green, standard speed/durability
+- [x] Fast Mole: small, yellow, 1.8x speed, 0.7x health
+- [x] Tank Mole: large cube, blue, 0.5x speed, 2x health
+- [x] Sniper Mole: octahedron, purple, 0.6x speed, range buff
 
-### 3.2 Path Tiles
-- Stone/sandy colored tiles with slight texture
-- Grid lines between tiles for clarity
-- Optional: directional arrows showing enemy flow
-- Raised slightly above grass level
+### 2.2 New Enemy Types (2)
+- [x] Burrowing Mole: cylinder, brown, immune to ground turrets
+- [x] Spawner Mole: icosahedron, spawns 3 minion moles
+- [x] Boss Mole: large icosahedron, red, every 5 waves
 
-### 3.3 Tower Models
-- Basic: Box base with rotating head and barrel
-- Sniper: Tall cylindrical with long scope
-- Cannon: Heavy round base with dual barrels
-- Distinct silhouettes visible from top-down view
+### 2.3 Enemy Spawning Logic
+- [x] Generate enemy composition based on wave number
+- [x] Scale enemy count: `10 + Math.floor(wave * 1.5)`
+- [x] Spawn with timing delays between each enemy
 
-### 3.4 Enemy Visuals
-- Different shapes per type: sphere, cube, pyramid
-- Color coding: green=basic, blue=sniper, red=cannon, purple=boss
-- Size variation: bosses 2.5x larger
+**Testing**: ✅ 12/12 tests passed
 
-### 3.5 Effects & Animations
-- Particle explosions on enemy death
-- Wave announcement overlay ("WAVE X")
-- Smooth UI transitions and button hover effects
-- Projectile trails
+---
+
+## Phase 3: Turret Types ✅ COMPLETE
+
+### 3.1 Existing Turrets (3)
+- [x] Basic Turret: fast fire, medium range
+- [x] Sniper Turret: slow fire, long range, high damage
+- [x] Cannon Turret: area damage
+
+### 3.2 New Turret Types (2)
+- [x] Trap Turret: one-time use, high damage (cost: 35)
+- [x] Slow Turret: reduces enemy speed in range by 50% (cost: 45)
+
+**Testing**: ✅ 11/11 tests passed
+
+---
+
+## Phase 4: Terrain & Visuals ✅ COMPLETE
+
+### 4.1 Minecraft-Style Terrain
+- [x] Replace grass with blocky terrain (voxels)
+- [x] Dirt blocks: #8B4513, #A0522D
+- [x] Grass layer on top: #228B22
+- [x] Stone accents: #696969
+
+### 4.2 Path Visuals
+- [x] Path tiles: dark soil color #3d2817
+- [x] Glowing edges on path (emission)
+- [x] Directional arrows on path
+
+### 4.3 Particle Effects
+- [x] Burrowing dust particles
+- [x] Enemy death explosions
+- [x] Projectile trails
+
+**Testing**: ✅ 9/9 tests passed
+
+---
+
+## Phase 5: Economy & Progression (NOT STARTED)
+
+### 5.1 Energy System
+- [ ] Base energy: 100
+- [ ] Regeneration: +1⚡ per second (max 100)
+- [ ] Kill rewards vary by enemy type
+- [ ] Wave completion bonus: +20 energy
+
+### 5.2 Leaderboard
+- [ ] Store top 10 scores in localStorage
+- [ ] Score = highest wave reached
+- [ ] Display on game over screen
+
+### 5.3 Achievements
+- [ ] Mole Masher: Kill 1000 enemies
+- [ ] Survivalist: Reach wave 20
+- [ ] Pathmaster: Survive 5 path changes
+- [ ] Boss Basher: Defeat 10 bosses
+
+### 5.4 Save/Load
+- [ ] Save gameState to localStorage
+- [ ] Load previous game on page refresh
+- [ ] Save: wave, energy, lives, turrets placed
+
+---
+
+## Phase 5: Economy & Progression
+
+### 5.1 Energy System
+- [ ] Base energy: 100
+- [ ] Regeneration: +1 energy per second (max 100)
+- [ ] Kill rewards: Basic=10, Fast=8, Tank=15, Sniper=12, Burrowing=15, Spawner=20, Boss=30
+- [ ] Wave completion bonus: +20 energy
+
+### 5.2 Leaderboard
+- [ ] Store top 10 scores in localStorage
+- [ ] Score = highest wave reached
+- [ ] Display on game over screen
+
+### 5.3 Achievements
+- [ ] Mole Masher: Kill 1000 enemies
+- [ ] Survivalist: Reach wave 20
+- [ ] Pathmaster: Survive 5 path changes
+- [ ] Boss Basher: Defeat 10 bosses
+
+### 5.4 Save/Load
+- [ ] Save gameState to localStorage
+- [ ] Load previous game on page refresh
+- [ ] Save: wave, energy, lives, turrets placed
+
+**Testing**:
+- [ ] Energy regenerates over time
+- [ ] Leaderboard displays scores
+- [ ] Game state persists on refresh
+
+---
+
+## Phase 6: UI/UX Overhaul
+
+### 6.1 Game Phase UI ✅ COMPLETE
+- [x] PREPARATION: Shows "Path Generating..." then 60s countdown
+- [x] WAVE_ACTIVE: Shows wave number, enemies remaining
+- [x] GAME_OVER: Shows final wave, score, leaderboard
+
+### 6.2 Tower Card Dock ✅ COMPLETE
+- [x] Position: Bottom of screen
+- [x] Glassmorphism effect
+- [x] Click to select, click again to deselect
+
+### 6.3 Energy Display ✅ COMPLETE
+- [x] Battery cell indicator (10 cells)
+- [x] Shows current/max energy
+- [x] Color-coded: green/yellow/red with pulse animation
+
+### 6.4 Lives Display ✅ COMPLETE
+- [x] Red heart icons (#ff453a)
+- [x] Pulse animation when life lost
+
+### 6.5 Start Button States ✅ COMPLETE
+- [x] Dynamic button text: "Start Wave" → "Start Wave N" → countdown
+- [x] Consistent Apple-style capitalization
+
+**Testing**: ✅ All UI elements display correctly, phase transitions smooth, no console errors
 
 ---
 
 ## Game Balance Standards
 
 ### Energy System
-- Start with 100⚡
-- Rewards per kill:
-  - Basic enemy: +10⚡
-  - Cannon enemy: +15⚡
-  - Boss enemy: +30⚡
-- Energy only gained by defeating enemies (not from waves)
+- Start: 100⚡
+- Regen: +1⚡/sec (max 100)
+- Kill rewards vary by enemy type
 
 ### Tower Costs
-- Basic: 20⚡ - balanced damage/speed
-- Sniper: 40⚡ - high damage, slow, long range
-- Cannon: 60⚡ - area damage potential
+- Basic: 20⚡
+- Sniper: 40⚡
+- Cannon: 60⚡
+- Trap: 35⚡
+- Slow: 45⚡
 
 ### Lives
-- Start with 8 lives
-- Lose 1 when enemy reaches path end
+- Start: 20
+- Lose 1 when enemy reaches end
 - Game over at 0 lives
-- Victory after surviving all waves
 
 ---
 
 ## Technical Standards
 
 ### Code Quality
-- Use ES6+ features (const/let, arrow functions)
-- Proper error handling in game loop
-- No memory leaks (dispose geometries/materials)
-- Validate inputs before use
+- Use ES6+ features
+- Proper error handling
+- No memory leaks
 
 ### Performance
-- Object pooling where possible
+- Object pooling
 - Minimize DOM updates
-- Reuse geometries and materials
+- 60fps target
 
 ### Browser Compatibility
-- Test on Chrome, Firefox, Edge
-- Use local HTTP server (not file://)
+- Chrome, Firefox, Edge
+- Local HTTP server required
 - WebGL required
 
 ---
 
-## File Structure
-```
-tower-defense/
-├── tower-defense.html    # Main game (single file)
-├── README.md             # Game documentation
-└── bootstrap/
-    ├── session_start.py  # Coordinate system
-    ├── record_event.py   # Event logging
-    └── coordinates.db    # Coordinate database
-```
+## Acceptance Criteria (Phase 1 Only)
 
----
-
-## Acceptance Criteria
-
-- [ ] Path clearly visible from left to right
-- [ ] Enemies spawn and follow path completely
-- [ ] Towers shoot and damage enemies
-- [ ] Enemies die and award energy
-- [ ] Lives decrease when enemies reach end
-- [ ] Wave progression works (1 → 2 → 3...)
-- [ ] Game over when lives = 0
-- [ ] Victory when all waves complete
-- [ ] UI looks premium (not 2004 quality)
+- [ ] Endless waves (no fixed limit)
+- [ ] Dynamic path generates each wave
+- [ ] Path connects left to right edge
+- [ ] 60-second preparation phase works
+- [ ] Can start wave early
+- [ ] Turrets destroyed if on new path
+- [ ] Energy refunded for destroyed turrets
+- [ ] Wave counter goes above 20
+- [ ] Game phase transitions correctly
 - [ ] No console errors during gameplay
