@@ -15,6 +15,7 @@ Usage:
 import sys
 import os
 import json
+import time
 
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
@@ -22,6 +23,42 @@ PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
 sys.path.insert(0, SCRIPT_DIR)
 
 from coordinates import CoordinateStore, LANDMARK_THRESHOLD
+
+
+def ensure_session_recorded(store: CoordinateStore):
+    """Create a session record if one doesn't exist for today."""
+    session_count = store.get_session_count()
+    if session_count == 0:
+        store.record_session(
+            session_number=1,
+            objective="Tower Defense game development",
+            tasks_completed=[],
+            landmarks_added=[],
+            warnings_added=[],
+        )
+        return
+
+    # Read ended_at in its own connection, then CLOSE it before any write.
+    # This avoids a nested-connection deadlock: record_session opens its own
+    # write connection which would block on the outer read transaction.
+    last_ended_at = None
+    with store._conn() as conn:
+        row = conn.execute(
+            "SELECT ended_at FROM sessions ORDER BY session_number DESC LIMIT 1"
+        ).fetchone()
+        if row:
+            last_ended_at = row["ended_at"]
+
+    # Connection is now closed. Safe to write.
+    if last_ended_at is None or (time.time() - last_ended_at) > 7200:
+        store.record_session(
+            session_number=session_count + 1,
+            objective="Tower Defense game development",
+            tasks_completed=[],
+            landmarks_added=[],
+            warnings_added=[],
+        )
+        return
 
 
 def get_current_gate(store: CoordinateStore) -> tuple[int, str]:
@@ -40,12 +77,12 @@ def get_current_gate(store: CoordinateStore) -> tuple[int, str]:
 
 def print_full_state(store: CoordinateStore):
     """Full state output for session start."""
-    session_count  = store.get_session_count()
-    landmarks      = store.get_landmarks()
-    permanent      = [l for l in landmarks if l["is_permanent"]]
-    developing     = [l for l in landmarks if not l["is_permanent"]]
-    warnings       = store.get_active_warnings(session_count)
-    contracts      = store.get_active_contracts()
+    session_count = store.get_session_count()
+    landmarks = store.get_landmarks()
+    permanent = [l for l in landmarks if l["is_permanent"]]
+    developing = [l for l in landmarks if not l["is_permanent"]]
+    warnings = store.get_active_warnings(session_count)
+    contracts = store.get_active_contracts()
     gate_num, gate_desc = get_current_gate(store)
 
     conf = min(0.20 + (len(permanent) * 0.05), 0.95)
@@ -83,8 +120,7 @@ def print_full_state(store: CoordinateStore):
         print("DEVELOPING (needs more test passes to crystallize):")
         for lm in developing:
             print(
-                f"  [~] {lm['name']} "
-                f"({lm['pass_count']}/{LANDMARK_THRESHOLD} passes)"
+                f"  [~] {lm['name']} ({lm['pass_count']}/{LANDMARK_THRESHOLD} passes)"
             )
 
     print()
@@ -108,7 +144,9 @@ def print_full_state(store: CoordinateStore):
         total_ev = graph_summary["total_events"]
         if total_ev > 0:
             print()
-            print(f"CODE GRAPH: {total_ev} events | {graph_summary['file_nodes']} files")
+            print(
+                f"CODE GRAPH: {total_ev} events | {graph_summary['file_nodes']} files"
+            )
     except Exception:
         pass
 
@@ -129,8 +167,8 @@ def print_full_state(store: CoordinateStore):
 def print_compact_state(store: CoordinateStore):
     """Compact state for after context condense."""
     session_count = store.get_session_count()
-    permanent     = store.get_landmarks(permanent_only=True)
-    warnings      = store.get_active_warnings(session_count)
+    permanent = store.get_landmarks(permanent_only=True)
+    warnings = store.get_active_warnings(session_count)
     gate_num, gate_desc = get_current_gate(store)
 
     print("--- TOWER DEFENSE STATE (post-condense) ---")
@@ -177,6 +215,7 @@ if __name__ == "__main__":
         sys.exit(0)
 
     store = CoordinateStore(db_path)
+    ensure_session_recorded(store)
 
     if "--compact" in sys.argv:
         print_compact_state(store)

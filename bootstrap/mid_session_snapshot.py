@@ -37,9 +37,12 @@ def run_test(command: str) -> tuple[bool, str]:
     """Run a verification command. Returns (passed, output)."""
     try:
         result = subprocess.run(
-            command, shell=True, capture_output=True, text=True,
+            command,
+            shell=True,
+            capture_output=True,
+            text=True,
             timeout=60,
-            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+            cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
         )
         return result.returncode == 0, result.stdout + result.stderr
     except subprocess.TimeoutExpired:
@@ -51,16 +54,16 @@ def run_test(command: str) -> tuple[bool, str]:
 def mid_session_snapshot(
     store: CoordinateStore,
     progress: str = "",
-    verify_landmarks: list = None,
-    add_warnings: list = None,
-    add_contracts: list = None
+    verify_landmarks: list | None = None,
+    add_warnings: list | None = None,
+    add_contracts: list | None = None,
 ):
     """
     Save mid-session progress to database.
     Prints a compact summary the agent can read after condensing.
     """
-    session_count  = store.get_session_count()
-    snapshot_time  = time.time()
+    session_count = store.get_session_count()
+    snapshot_time = time.time()
 
     print()
     print("=" * 65)
@@ -98,7 +101,7 @@ def mid_session_snapshot(
                     description=description.strip(),
                     feature_path=feature_path.strip(),
                     test_command=test_command,
-                    session_number=session_count + 1
+                    session_number=session_count + 1,
                 )
                 became_permanent = store.verify_landmark(lm_id)
                 new_landmarks.append(name)
@@ -115,7 +118,7 @@ def mid_session_snapshot(
                     space="toolpath",
                     description=f"Verification failed for {name}",
                     approach=f"ran: {test_command}",
-                    session_number=session_count + 1
+                    session_number=session_count + 1,
                 )
 
     # Record any gradient warnings from this context window
@@ -126,17 +129,17 @@ def mid_session_snapshot(
         for w_str in add_warnings:
             parts = w_str.split(":", 3)
             if len(parts) >= 3:
-                space       = parts[0].strip()
+                space = parts[0].strip()
                 description = parts[1].strip()
-                approach    = parts[2].strip()
-                correction  = parts[3].strip() if len(parts) > 3 else None
+                approach = parts[2].strip()
+                correction = parts[3].strip() if len(parts) > 3 else None
 
                 w_id = store.add_gradient_warning(
                     space=space,
                     description=description,
                     approach=approach,
                     session_number=session_count + 1,
-                    correction=correction
+                    correction=correction,
                 )
                 warning_ids.append(w_id)
                 print(f"  [{space}] {description[:60]}")
@@ -160,8 +163,8 @@ def mid_session_snapshot(
                     (
                         json.dumps({"progress": progress, "time": snapshot_time}),
                         0.5,
-                        snapshot_time
-                    )
+                        snapshot_time,
+                    ),
                 )
         except Exception:
             pass
@@ -189,6 +192,7 @@ def mid_session_snapshot(
     contracts = store.get_active_contracts()
 
     from bootstrap.session_start import get_current_gate
+
     gate_num, gate_desc = get_current_gate(store)
 
     print(f"Gate: {gate_desc}")
@@ -217,31 +221,33 @@ def mid_session_snapshot(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="IRIS Bootstrap Mid-Session Snapshot"
+    parser = argparse.ArgumentParser(description="IRIS Bootstrap Mid-Session Snapshot")
+    parser.add_argument(
+        "--progress",
+        type=str,
+        default="",
+        help="Brief description of progress this context window",
     )
     parser.add_argument(
-        "--progress", type=str, default="",
-        help="Brief description of progress this context window"
+        "--verify",
+        action="append",
+        help="name:description:file_path:test_command — verify and record landmark",
     )
     parser.add_argument(
-        "--verify", action="append",
-        help="name:description:file_path:test_command — verify and record landmark"
+        "--warn",
+        action="append",
+        help="space:description:approach[:correction] — record gradient warning",
     )
+    parser.add_argument("--contract", action="append", help="Behavioral rule to record")
     parser.add_argument(
-        "--warn", action="append",
-        help="space:description:approach[:correction] — record gradient warning"
-    )
-    parser.add_argument(
-        "--contract", action="append",
-        help="Behavioral rule to record"
+        "--auto",
+        action="store_true",
+        help="Automatically record progress without prompts",
     )
 
     args = parser.parse_args()
 
-    db_path = os.path.join(
-        os.path.dirname(os.path.abspath(__file__)), "coordinates.db"
-    )
+    db_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "coordinates.db")
 
     if not os.path.exists(db_path):
         print("No coordinate database found.")
@@ -251,10 +257,50 @@ if __name__ == "__main__":
 
     store = CoordinateStore(db_path)
 
-    mid_session_snapshot(
-        store=store,
-        progress=args.progress,
-        verify_landmarks=args.verify or [],
-        add_warnings=args.warn or [],
-        add_contracts=args.contract or []
-    )
+    if args.auto:
+        session_count = store.get_session_count()
+        if session_count == 0:
+            store.record_session(
+                session_number=1,
+                objective="Tower Defense game development",
+                tasks_completed=[],
+                landmarks_added=[],
+                warnings_added=[],
+            )
+        else:
+            import time as _time
+
+            # Read ended_at in its own connection, then CLOSE it before any write.
+            # This avoids a nested-connection deadlock.
+            last_ended_at = None
+            with store._conn() as conn:
+                row = conn.execute(
+                    "SELECT ended_at FROM sessions ORDER BY session_number DESC LIMIT 1"
+                ).fetchone()
+                if row:
+                    last_ended_at = row["ended_at"]
+
+            if last_ended_at is None or (_time.time() - last_ended_at) > 7200:
+                store.record_session(
+                    session_number=session_count + 1,
+                    objective="Tower Defense game development",
+                    tasks_completed=[],
+                    landmarks_added=[],
+                    warnings_added=[],
+                )
+
+        mid_session_snapshot(
+            store=store,
+            progress=args.progress or "auto mid-session snapshot",
+            verify_landmarks=args.verify or [],
+            add_warnings=args.warn or [],
+            add_contracts=args.contract or [],
+        )
+    else:
+        mid_session_snapshot(
+            store=store,
+            progress=args.progress,
+            verify_landmarks=args.verify or [],
+            add_warnings=args.warn or [],
+            add_contracts=args.contract or [],
+        )

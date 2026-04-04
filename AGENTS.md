@@ -5,7 +5,16 @@ This file never needs manual updates — hooks and bootstrap scripts fetch live 
 
 ## WHAT THIS PROJECT IS
 A browser-based 3D Tower Defense game built as a single `tower-defense.html` file.  
-It uses Three.js (via CDN) for rendering, with cartoon/vibrant visuals, tower placement on grass tiles, enemy pathfinding, waves, energy/seals/lives resources, and progressive path variety.
+It uses Three.js (via CDN) for rendering, with a **full voxel art style** — all terrain, enemies, towers, environmental details, and paths are constructed from box-based voxel meshes with PBR materials, edge outlines, and atmospheric effects.
+
+**Visual Design: Voxel Aesthetic**
+- **Terrain**: Layered grass/dirt/stone voxel blocks with visible edge lines (`EdgesGeometry` + `LineSegments`)
+- **Enemies**: 7 distinct voxel enemy types (basic, fast, tank, sniper, burrowing, spawner, boss) built from 5-15 voxel boxes each with integrated voxel eyes/mouth
+- **Towers**: 5 voxel tower types (BASIC, SNIPER, CANNON, SLOW, TRAP) with PBR materials and barrel tracking
+- **Environment**: Voxel pine/oak trees, bushes with berries, mushrooms, gas barrels, statues, rocks, flowers
+- **Paths**: Voxel path tiles with edge lines and directional arrow indicators
+- **Lighting**: PBR `MeshStandardMaterial` throughout, ACES filmic tone mapping, PCF soft shadows, exponential fog
+- **UI**: Pixel-art tower card icons, voxel 3D text for title/game-over screens, yellow wave announcements
 
 **Build objective**: Deliver a **fully functional Tower Defense game** with **all features implemented** and **complete UI/UX design working** (tower selection, placement validation, wave system, resource management, enemy AI, combat, win/loss conditions, visual feedback, and polished player experience).
 
@@ -66,7 +75,7 @@ python bootstrap/query_graph.py --summary
 ## DEVELOPMENT WORKFLOW
 
 ### Getting Started
-1. Run `python bootstrap/session_start.py`
+1. Run `python bootstrap/session_start.py` — this auto-records a new session if none exists for today
 2. Check available work with `python bootstrap/agent_context.py`
 3. Navigate to `opencode-test/tower defense`
 4. Open `tower-defense.html` in browser (via local server)
@@ -136,10 +145,12 @@ python bootstrap/record_event.py --type note --desc "reasoning for the change"
 
 ### Three.js Specific Guidelines
 - Set `castShadow` / `receiveShadow` appropriately
-- Use `MeshBasicMaterial` for unlit, `MeshLambertMaterial` for lit
+- Use `MeshStandardMaterial` for PBR shading (roughness/metalness)
+- Use `EdgesGeometry` + `LineSegments` for voxel edge outlines on terrain and path tiles
 - Dispose geometries and materials when removing objects
 - Keep render loop lean
-- Use orthographic camera looking straight down for 2.5D effect
+- Renderer: `PCFSoftShadowMap`, `ACESFilmicToneMapping`, exposure ~1.35
+- Scene: `FogExp2` for depth, brighter ambient/directional/hemisphere lights
 
 ### Performance & Error Handling
 - Minimize DOM updates
@@ -180,6 +191,8 @@ After meaningful work, always record to the coordinate database so the next agen
 - Test changes manually in browser after every edit
 - Record every significant action (edit, fix, design decision)
 - Re-run `session_start.py` when switching contexts or after major sessions
+- Run `python bootstrap/update_coordinates.py --auto --tasks "summary of what was done"` at the end of each session to finalize session recording
+- Run `python bootstrap/update_coordinates.py --auto --tasks "summary of what was done"` at the end of each session to finalize session recording
 
 **What "Done" Looks Like for a Task**
 - Change works smoothly in browser
