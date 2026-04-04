@@ -1857,7 +1857,18 @@
             texture.magFilter = THREE.NearestFilter;
             texture.minFilter = THREE.NearestFilter;
             const sprite = new THREE.Sprite(new THREE.SpriteMaterial({ map: texture, transparent: true }));
-            sprite.scale.set(12, 12, 1);
+            const offsets = {
+                basic:    { scale: 10, pos: [0, 0, 10] },
+                fast:     { scale: 8,  pos: [0, 0, 8] },
+                tank:     { scale: 12, pos: [0, 0, 9] },
+                sniper:   { scale: 10, pos: [0, 0, 11] },
+                burrowing:{ scale: 10, pos: [0, 0, 10] },
+                spawner:  { scale: 14, pos: [0, 0, 14] },
+                boss:     { scale: 18, pos: [0, 0, 22] }
+            };
+            const cfg = offsets[type] || offsets.basic;
+            sprite.scale.set(cfg.scale, cfg.scale, 1);
+            sprite.position.set(cfg.pos[0], cfg.pos[1], cfg.pos[2]);
             return sprite;
         }
 
@@ -1913,7 +1924,6 @@
             scene.add(glowMesh);
             enemy.glowMesh = glowMesh;
             const face = createEnemyFace(type);
-            face.position.set(0, 14, 0);
             enemy.mesh.add(face);
             enemy.face = face;
             const healthBarGeo = new THREE.PlaneGeometry(16, 3);
