@@ -10,6 +10,12 @@ A browser-based 3D Tower Defense game built with Three.js. Defend your tower aga
 - **Expanding Map** — The map starts at 8×8 tiles and grows by 2 tiles in each direction after every boss wave (every 5 waves), providing more strategic space.
 - **Boss Waves** — Every 5th wave features a powerful boss enemy with significantly more health and damage.
 
+### Dynamic Map & Environment
+- **Expanding Territory** — The map starts at 8×8 tiles and grows by 2 tiles in each direction after every boss wave (every 5 waves). Border walls dynamically expand to contain the new territory.
+- **Rich Terrain Details** — Every new tile receives environmental details: pine trees, oak trees, bushes with berries, mushrooms, rock clusters, flower patches, and water puddles. All rendered in blocky Minecraft-style voxel aesthetics.
+- **Interactive Hazards** — Gas barrels explode when damaged (area damage), brick walls are destructible obstacles, statues are indestructible landmarks, and rivers slow enemies passing through them.
+- **Evolving Paths** — 8 path generation algorithms (Serpentine, Spiral, Zigzag, River, Switchback, Maze, Tendril, Chaos) create unique routes each wave. Complex types unlock progressively: Maze at wave 3+, Tendril at 6+, Chaos at 10+.
+
 ### Tower Types
 | Tower | Cost | Description | Placement |
 |-------|------|-------------|-----------|
