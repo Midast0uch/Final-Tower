@@ -79,9 +79,25 @@ opencode-test/
 ```
 
 ## Tech Stack
-- **Three.js** (v0.128.0) — 3D rendering
+- **Three.js** (v0.128.0 via jsdelivr/cdnjs CDN) — 3D rendering
 - **Vanilla JavaScript** (ES6+) — Game logic
 - **HTML/CSS** — UI overlay with frosted glass design
+
+## Recent Updates
+- **Path Visibility** — Path tiles now pulse between dark brown and saturated green with emissive glow, making the enemy route clearly visible before and during waves
+- **Enemy Glitch Fix** — Fixed visibility flickering bug where all enemies toggled on/off every few frames; now only burrowing moles use invisibility
+- **Game Balance** — Reduced early wave enemy health scaling (from 0.12/0.08 per wave to 0.06/0.04) for smoother difficulty curve
+- **Scene Lighting** — Dimmed ambient and directional lighting so path tile emissive glow is more apparent
+- **Decoy Terrain** — Random brown dirt tiles scattered across grass areas for visual confusion and natural aesthetic
+- **Camera Fix** — Camera now properly centers on the map at game start using `updateCameraPosition()`
+
+## Recent Updates
+- **Path Visibility** — Path tiles now pulse between dark brown and saturated green with emissive glow, making the enemy route clearly visible before and during waves
+- **Enemy Glitch Fix** — Fixed visibility flickering bug where all enemies toggled on/off every few frames; now only burrowing moles use invisibility
+- **Game Balance** — Reduced early wave enemy health scaling (from 0.12/0.08 per wave to 0.06/0.04) for smoother difficulty curve
+- **Scene Lighting** — Dimmed ambient and directional lighting so path tile emissive glow is more apparent
+- **Decoy Terrain** — Random brown dirt tiles scattered across grass areas for visual confusion and natural aesthetic
+- **Camera Fix** — Camera now properly centers on the map at game start using `updateCameraPosition()`
 
 ## Development Workflow
 This project uses a coordinate database system for agent memory and workflow tracking. See `AGENTS.md` for details.

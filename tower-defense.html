@@ -1,11 +1,21 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <base href="/">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>FINAL TOWER</title>
-    <script src="https://unpkg.com/three@0.128.0/build/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"></script>
+    <script>
+        if (typeof THREE === 'undefined') {
+            console.error('Three.js failed to load from jsdelivr, trying cdnjs...');
+            var s = document.createElement('script');
+            s.src = 'https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js';
+            s.onerror = function() { console.error('ALL Three.js CDNs failed!'); };
+            document.head.appendChild(s);
+        } else {
+            console.log('Three.js loaded successfully, version:', THREE.REVISION);
+        }
+    </script>
     <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@600;700;800&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -661,6 +671,7 @@
         let clouds = [];
         let ambientParticles = [];
         let pathSegments = [];
+        let decoyTiles = [];
         let debrisParticles = [];
 
         class PathGenerator {
@@ -1006,8 +1017,8 @@
                     type = 'fast';
                 }
                 
-                const healthMult = 1 + (waveNum * 0.12);
-                const speedMult = 1 + (waveNum * 0.015);
+                const healthMult = 1 + (waveNum * 0.06);
+                const speedMult = 1 + (waveNum * 0.01);
                 
                 enemies.push({
                     type: type,
@@ -1138,6 +1149,7 @@
 
         function createUI() {
             const container = document.getElementById('tower-buttons');
+            if (!container) { console.error('tower-buttons element not found'); return; }
             container.innerHTML = '';
             Object.entries(TOWER_TYPES).forEach(([key, type]) => {
                 const btn = document.createElement('div');
@@ -1166,6 +1178,7 @@
                 container.appendChild(btn);
             });
             const startBtn = document.getElementById('start-wave-btn');
+            if (!startBtn) { console.error('start-wave-btn element not found'); return; }
             startBtn.textContent = 'Start Wave';
             startBtn.addEventListener('click', () => {
                 if (gameState.gamePhase === 'GAME_OVER') { location.reload(); return; }
@@ -1434,100 +1447,55 @@
         function init() {
             console.log('Initializing game...');
             scene = new THREE.Scene();
-            const skyGeo = new THREE.SphereGeometry(900, 32, 32);
-            const skyMat = new THREE.ShaderMaterial({
-                uniforms: {
-                    topColor: { value: new THREE.Color(0x1e90ff) },
-                    midColor: { value: new THREE.Color(0x87CEEB) },
-                    bottomColor: { value: new THREE.Color(0xffecd2) },
-                    offset: { value: 400 },
-                    exponent: { value: 0.6 }
-                },
-                vertexShader: `
-                    varying vec3 vWorldPosition;
-                    void main() {
-                        vec4 worldPosition = modelMatrix * vec4(position, 1.0);
-                        vWorldPosition = worldPosition.xyz;
-                        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
-                    }
-                `,
-                fragmentShader: `
-                    uniform vec3 topColor;
-                    uniform vec3 midColor;
-                    uniform vec3 bottomColor;
-                    uniform float offset;
-                    uniform float exponent;
-                    varying vec3 vWorldPosition;
-                    void main() {
-                        float h = normalize(vWorldPosition + offset).y;
-                        vec3 color;
-                        if (h > 0.3) {
-                            color = mix(midColor, topColor, (h - 0.3) / 0.7);
-                        } else {
-                            color = mix(bottomColor, midColor, h / 0.3);
-                        }
-                        gl_FragColor = vec4(color, 1.0);
-                    }
-                `,
-                side: THREE.BackSide
-            });
-            const sky = new THREE.Mesh(skyGeo, skyMat);
-            scene.add(sky);
-            const cloudGeo = new THREE.SphereGeometry(1, 8, 8);
-            const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, roughness: 1.0, metalness: 0.0 });
-            for (let i = 0; i < 25; i++) {
-                const cloudGroup = new THREE.Group();
-                const clusterSize = 3 + Math.floor(Math.random() * 4);
-                for (let j = 0; j < clusterSize; j++) {
-                    const cloudPuff = new THREE.Mesh(cloudGeo, cloudMat.clone());
-                    cloudPuff.scale.set(15 + Math.random() * 20, 8 + Math.random() * 10, 10 + Math.random() * 15);
-                    cloudPuff.position.set((Math.random() - 0.5) * 30, (Math.random() - 0.5) * 8, (Math.random() - 0.5) * 20);
-                    cloudGroup.add(cloudPuff);
-                }
-                const startX = Math.random() * CONFIG.MAP_WIDTH * CONFIG.TILE_SIZE;
-                const startZ = Math.random() * CONFIG.MAP_HEIGHT * CONFIG.TILE_SIZE;
-                cloudGroup.position.set(startX, 80 + Math.random() * 40, startZ);
-                scene.add(cloudGroup);
-                clouds.push({ group: cloudGroup, speed: 0.2 + Math.random() * 0.3, startX: startX, startZ: startZ, phase: Math.random() * Math.PI * 2 });
-            }
-            camera = new THREE.PerspectiveCamera(50, window.innerWidth / window.innerHeight, 0.1, 2000);
-            const centerX = CONFIG.MAP_WIDTH * CONFIG.TILE_SIZE / 2;
-            const centerZ = CONFIG.MAP_HEIGHT * CONFIG.TILE_SIZE / 2;
-            camera.position.set(centerX, 500, centerZ + 250);
-            camera.lookAt(centerX, 0, centerZ);
-            const ambientLight = new THREE.AmbientLight(0xfff8e7, 0.7);
-            scene.add(ambientLight);
-            const directionalLight = new THREE.DirectionalLight(0xffffff, 1.1);
-            directionalLight.position.set(100, 200, 50);
-            directionalLight.castShadow = true;
-            directionalLight.shadow.mapSize.width = 2048;
-            directionalLight.shadow.mapSize.height = 2048;
-            directionalLight.shadow.camera.near = 10;
-            directionalLight.shadow.camera.far = 600;
-            directionalLight.shadow.camera.left = -250;
-            directionalLight.shadow.camera.right = 250;
-            directionalLight.shadow.camera.top = 250;
-            directionalLight.shadow.camera.bottom = -250;
-            scene.add(directionalLight);
-            const fillLight = new THREE.DirectionalLight(0xa8d8ea, 0.4);
-            fillLight.position.set(-50, 100, -50);
-            scene.add(fillLight);
-            const hemiLight = new THREE.HemisphereLight(0xa8d8ea, 0x4a7a3a, 0.6);
-            scene.add(hemiLight);
-            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+            scene.background = new THREE.Color(0x87CEEB);
+            scene.fog = new THREE.FogExp2(0xa8d8ea, 0.001);
+
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 2000);
+            gameState.cameraAngle = Math.PI / 4;
+            gameState.cameraZoom = 0.8;
+            gameState.cameraTilt = 0.3;
+            updateCameraPosition();
+
+            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
             renderer.setSize(window.innerWidth, window.innerHeight);
-            renderer.setClearColor(0xa8d8ea, 1);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             renderer.shadowMap.enabled = true;
             renderer.shadowMap.type = THREE.PCFSoftShadowMap;
             renderer.toneMapping = THREE.ACESFilmicToneMapping;
             renderer.toneMappingExposure = 1.35;
-            scene.fog = new THREE.FogExp2(0xa8d8ea, 0.001);
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+            scene.add(ambientLight);
+
+            const hemiLight = new THREE.HemisphereLight(0x87CEEB, 0x556B2F, 0.35);
+            scene.add(hemiLight);
+
+            const dirLight = new THREE.DirectionalLight(0xfff4e0, 0.9);
+            dirLight.position.set(80, 120, 60);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
+            dirLight.shadow.camera.left = -150;
+            dirLight.shadow.camera.right = 150;
+            dirLight.shadow.camera.top = 150;
+            dirLight.shadow.camera.bottom = -150;
+            dirLight.shadow.camera.near = 1;
+            dirLight.shadow.camera.far = 400;
+            dirLight.shadow.bias = -0.001;
+            scene.add(dirLight);
+
+            const fillLight = new THREE.DirectionalLight(0xa8d8ea, 0.2);
+            fillLight.position.set(-60, 40, -40);
+            scene.add(fillLight);
+
             document.getElementById('game-container').appendChild(renderer.domElement);
             buildMap();
             createAmbientParticles();
             currentPath = PathGenerator.generateSerpentinePath(CONFIG.MAP_WIDTH, CONFIG.MAP_HEIGHT, 1);
             pathOptions.mainPath = currentPath;
             drawPath(currentPath);
+            scatterDecoyTiles();
             createUI();
             setupEventListeners();
             setupLoginScreen();
@@ -1581,8 +1549,14 @@
             const leaderboardBtn = document.getElementById('leaderboard-btn');
             const achievementsBtn = document.getElementById('achievements-btn');
             const welcomeText = document.getElementById('welcome-text');
+
+            if (!usernameInput || !loginBtn || !playBtn || !welcomeText) {
+                console.warn('Login screen elements not found, skipping setup');
+                return;
+            }
+
             const savedUsername = localStorage.getItem('finalTowerUsername');
-            if (savedUsername) { usernameInput.value = savedUsername; }
+            if (savedUsername && usernameInput) { usernameInput.value = savedUsername; }
             loginBtn.addEventListener('click', () => {
                 const username = usernameInput.value.trim() || 'Player';
                 localStorage.setItem('finalTowerUsername', username);
@@ -1604,6 +1578,7 @@
                 generateNewPath();
                 clearPathTiles();
                 drawPath(currentPath);
+                scatterDecoyTiles();
                 createAmbientParticles();
                 updateUI();
                 const startBtn = document.getElementById('start-wave-btn');
@@ -1614,8 +1589,8 @@
                 document.getElementById('game-container').appendChild(hint);
                 setTimeout(() => hint.remove(), 4500);
             });
-            leaderboardBtn.addEventListener('click', () => { alert('Leaderboard coming soon!'); });
-            achievementsBtn.addEventListener('click', () => { alert('Achievements coming soon!'); });
+            if (leaderboardBtn) leaderboardBtn.addEventListener('click', () => { alert('Leaderboard coming soon!'); });
+            if (achievementsBtn) achievementsBtn.addEventListener('click', () => { alert('Achievements coming soon!'); });
         }
 
         function buildMap() {
@@ -2172,8 +2147,8 @@
 
         function drawPath(path) {
             if (!path || !Array.isArray(path)) return;
-            const edgeMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.2 });
-            const pathColors = [0x6B4423, 0x8B5A2B, 0x7A4B1E, 0x9B6B3A, 0x7B5230];
+            const edgeMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.35 });
+            const pathColors = [0x3d2b1f, 0x2e1f0f, 0x4a3728, 0x3b2a1a, 0x2c1a0a];
             path.forEach((p, i) => {
                 setTimeout(() => {
                     if (!p || p.x === undefined) return;
@@ -2199,13 +2174,13 @@
                 const x = p.x * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
                 const z = p.y * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
                 const pathColor = pathColors[Math.floor(Math.random() * pathColors.length)];
-                const pathGeo = new THREE.BoxGeometry(CONFIG.TILE_SIZE - 3, 3, CONFIG.TILE_SIZE - 3);
-                const pathMat = new THREE.MeshStandardMaterial({ color: pathColor, roughness: 0.9, metalness: 0.0, emissive: 0x5a3a1a, emissiveIntensity: 0.2 });
+                const pathGeo = new THREE.BoxGeometry(CONFIG.TILE_SIZE - 3, 1.5, CONFIG.TILE_SIZE - 3);
+                const pathMat = new THREE.MeshStandardMaterial({ color: pathColor, roughness: 0.9, metalness: 0.0, emissive: 0x5a3a1a, emissiveIntensity: 0.5 });
                 const pathTile = new THREE.Mesh(pathGeo, pathMat);
-                pathTile.position.set(x, 4.5, z);
+                pathTile.position.set(x, 7.5, z);
                 pathTile.receiveShadow = true;
                 scene.add(pathTile);
-                pathSegments.push({ mesh: pathTile });
+                pathSegments.push({ mesh: pathTile, animPhase: i * 0.15, baseColor: pathColor });
                 const pathEdges = new THREE.LineSegments(new THREE.EdgesGeometry(pathGeo), edgeMat);
                 pathEdges.position.copy(pathTile.position);
                 scene.add(pathEdges);
@@ -2289,6 +2264,10 @@
                 if (seg.mesh && seg.mesh.parent) { scene.remove(seg.mesh); }
             });
             pathSegments = [];
+            decoyTiles.forEach(tile => {
+                if (tile && tile.parent) { scene.remove(tile); }
+            });
+            decoyTiles = [];
         }
 
         function startWave() {
@@ -2351,6 +2330,9 @@
             const eyeWhiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4, metalness: 0.0 });
             const eyePupilMat = new THREE.MeshStandardMaterial({ color: 0x1a1a2e, roughness: 0.3, metalness: 0.0 });
             const mouthMat = new THREE.MeshStandardMaterial({ color: 0x1a1a2e, roughness: 0.5, metalness: 0.0 });
+            const toothMat = new THREE.MeshStandardMaterial({ color: 0xf5f5f5, roughness: 0.3, metalness: 0.0 });
+            const browMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(color).multiplyScalar(0.4).getHex(), roughness: 0.8, metalness: 0.0 });
+            const fangMat = new THREE.MeshStandardMaterial({ color: 0xff4444, roughness: 0.3, metalness: 0.0 });
             const voxel = (sx, sy, sz, px, py, pz, m) => {
                 const geo = new THREE.BoxGeometry(sx, sy, sz);
                 const mesh = new THREE.Mesh(geo, m || mat);
@@ -2358,9 +2340,10 @@
                 mesh.castShadow = true;
                 group.add(mesh);
             };
-            const eye = (sx, sy, sz, px, py, pz) => {
+            const eye = (sx, sy, sz, px, py, pz, pupilScale) => {
                 voxel(sx, sy, sz, px, py, pz, eyeWhiteMat);
-                voxel(sx * 0.6, sy * 0.6, 1, px, py, pz + sz / 2, eyePupilMat);
+                const ps = pupilScale || 0.6;
+                voxel(sx * ps, sy * ps, 1, px, py, pz + sz / 2, eyePupilMat);
             };
             switch(type) {
                 case 'basic':
@@ -2379,9 +2362,11 @@
                     voxel(6, 3, 6, 0, 8, 0);
                     voxel(4, 3, 4, 0, 11, 0);
                     voxel(4, 2, 3, 0, 13, 0, lightMat);
-                    eye(2.5, 2.5, 1, -2, 8, 3);
-                    eye(2.5, 2.5, 1, 2, 8, 3);
-                    voxel(3, 1, 1, 0, 6, 3, mouthMat);
+                    eye(2.5, 2, 1, -2, 8, 3, 0.5);
+                    eye(2.5, 2, 1, 2, 8, 3, 0.5);
+                    voxel(3, 2, 1, 0, 6, 3, mouthMat);
+                    voxel(1, 1, 1, -1, 6.5, 3.5, toothMat);
+                    voxel(1, 1, 1, 1, 6.5, 3.5, toothMat);
                     break;
                 case 'tank':
                     voxel(14, 5, 12, 0, 2.5, 0);
@@ -2389,9 +2374,13 @@
                     voxel(14, 5, 12, 0, 12.5, 0);
                     voxel(12, 4, 10, 0, 17, 0);
                     voxel(10, 3, 8, 0, 20.5, 0, darkMat);
+                    voxel(4, 1.5, 1, -4, 14, 7, browMat);
+                    voxel(4, 1.5, 1, 4, 14, 7, browMat);
                     eye(3.5, 3, 1, -4, 12, 6);
                     eye(3.5, 3, 1, 4, 12, 6);
                     voxel(5, 1.5, 1, 0, 9, 6, mouthMat);
+                    voxel(1.5, 1, 1, -2, 9.5, 6.5, toothMat);
+                    voxel(1.5, 1, 1, 2, 9.5, 6.5, toothMat);
                     voxel(6, 3, 2, 0, 18, 7, lightMat);
                     break;
                 case 'sniper':
@@ -2401,8 +2390,8 @@
                     voxel(6, 4, 6, 0, 12, 0);
                     voxel(6, 4, 6, 0, 16, 0);
                     voxel(4, 3, 4, 0, 19.5, 0);
-                    eye(2, 2.5, 1, -2, 14, 3);
-                    eye(2, 2.5, 1, 2, 14, 3);
+                    eye(2.5, 2.5, 1, -2, 14, 3, 0.5);
+                    eye(1.5, 2.5, 1, 2, 14, 3, 0.4);
                     voxel(2, 1, 1, 0, 11, 3, mouthMat);
                     voxel(2, 2, 8, 0, 19, 0, darkMat);
                     break;
@@ -2411,9 +2400,11 @@
                     voxel(14, 4, 12, 0, 6, 0);
                     voxel(12, 4, 10, 0, 10, 0);
                     voxel(8, 3, 8, 0, 13.5, 0);
-                    eye(3, 2.5, 1, -3, 10, 4);
-                    eye(3, 2.5, 1, 3, 10, 4);
+                    eye(2.5, 2, 1, -3, 10, 4, 0.5);
+                    eye(2.5, 2, 1, 3, 10, 4, 0.5);
                     voxel(5, 1.5, 1, 0, 7, 4, mouthMat);
+                    voxel(1, 1, 1, -1.5, 7.5, 4.5, toothMat);
+                    voxel(1, 1, 1, 1.5, 7.5, 4.5, toothMat);
                     voxel(4, 3, 2, -4, 6, 6, darkMat);
                     voxel(4, 3, 2, 4, 6, 6, darkMat);
                     break;
@@ -2424,8 +2415,8 @@
                     voxel(10, 4, 8, 0, 14, 0);
                     voxel(8, 3, 6, 0, 17.5, 0);
                     voxel(6, 2, 4, 0, 20, 0, lightMat);
-                    eye(3, 3, 1, -3, 12, 4);
-                    eye(3, 3, 1, 3, 12, 4);
+                    eye(3.5, 3.5, 1, -3, 12, 4, 0.35);
+                    eye(3.5, 3.5, 1, 3, 12, 4, 0.35);
                     voxel(5, 2, 1, 0, 9, 4, mouthMat);
                     voxel(4, 3, 4, -3, 2, 0, darkMat);
                     voxel(4, 3, 4, 3, 2, 0, darkMat);
@@ -2438,9 +2429,14 @@
                     voxel(14, 5, 10, 0, 22.5, 0);
                     voxel(10, 4, 8, 0, 26.5, 0);
                     voxel(8, 3, 6, 0, 30, 0, lightMat);
-                    eye(4, 4, 1, -5, 22, 4);
-                    eye(4, 4, 1, 5, 22, 4);
-                    voxel(6, 2, 1, 0, 18, 4, mouthMat);
+                    const bossPupilMat = new THREE.MeshStandardMaterial({ color: 0xff2222, roughness: 0.2, metalness: 0.0, emissive: 0xff2222, emissiveIntensity: 0.5 });
+                    voxel(4, 4, 1, -5, 22, 4, eyeWhiteMat);
+                    voxel(2.5, 2.5, 1, -5, 22, 4.5, bossPupilMat);
+                    voxel(4, 4, 1, 5, 22, 4, eyeWhiteMat);
+                    voxel(2.5, 2.5, 1, 5, 22, 4.5, bossPupilMat);
+                    voxel(6, 3, 1, 0, 18, 4, mouthMat);
+                    voxel(1.5, 1.5, 1, -2, 19, 4.5, fangMat);
+                    voxel(1.5, 1.5, 1, 2, 19, 4.5, fangMat);
                     voxel(4, 4, 2, -6, 22, 7, darkMat);
                     voxel(4, 4, 2, 6, 22, 7, darkMat);
                     voxel(3, 2, 1, -4, 18, 7, darkMat);
@@ -2462,18 +2458,30 @@
         }
 
         function spawnEnemy(type, variant, waveNum, enemyData) {
-            let speed = 0.6 + (waveNum * 0.04);
-            let health; let damage; let color; let size;
-            switch(type) {
-                case 'basic': health = 15 + (waveNum * 2); damage = 1; color = 0x6B8E23; size = 1.0; break;
-                case 'fast': health = 15 + (waveNum * 2); damage = 1 + Math.floor(waveNum / 5); speed *= 1.8; color = 0xDAA520; size = 0.85; break;
-                case 'tank': health = 50 + (waveNum * 6); damage = 3 + Math.floor(waveNum / 4); speed *= 0.5; color = 0x4682B4; size = 1.2; break;
-                case 'sniper': health = 15 + waveNum; damage = 4 + Math.floor(waveNum / 3); speed *= 0.6; color = 0x9370DB; size = 1.0; break;
-                case 'burrowing': health = 20 + (waveNum * 3); damage = 2 + Math.floor(waveNum / 4); speed *= 0.8; color = 0x8B4513; size = 1.0; break;
-                case 'spawner': health = 35 + (waveNum * 5); damage = 1; speed *= 0.4; color = 0xDA70D6; size = 1.1; break;
-                case 'boss': health = (waveNum % 5 === 0) ? (80 + waveNum * 15) : 60; damage = (waveNum % 5 === 0) ? (15 + Math.floor(waveNum / 4)) : 5; speed *= 0.4; color = 0x8B0000; size = 1.5; break;
-                default: health = 25 + (waveNum * 4); damage = 1 + Math.floor(waveNum / 5); color = 0x6B8E23; size = 1.0;
-            }
+            const baseStats = {
+                basic:     { speed: 0.8, health: 20, damage: 1 },
+                fast:      { speed: 1.6, health: 12, damage: 1 },
+                tank:      { speed: 0.4, health: 80, damage: 4 },
+                sniper:    { speed: 0.5, health: 18, damage: 6 },
+                burrowing: { speed: 0.7, health: 30, damage: 2 },
+                spawner:   { speed: 0.35, health: 50, damage: 1 },
+                boss:      { speed: 0.3, health: 120, damage: 10 },
+            };
+            const stats = baseStats[type] || baseStats.basic;
+            const waveHealthMult = 1 + (waveNum * 0.04);
+            const waveSpeedMult = 1 + (waveNum * 0.005);
+            const postBossHM = 1 + ((gameState.bossesDefeated || 0) * 0.05);
+            const postBossSM = 1 + ((gameState.bossesDefeated || 0) * 0.02);
+            let speed = stats.speed * waveSpeedMult * postBossSM;
+            let health = Math.floor(stats.health * waveHealthMult * postBossHM);
+            let damage = stats.damage + Math.floor(waveNum * 0.3);
+            const colors = {
+                basic: 0x6B8E23, fast: 0xDAA520, tank: 0x4682B4,
+                sniper: 0x9370DB, burrowing: 0x8B4513, spawner: 0xDA70D6, boss: 0x8B0000
+            };
+            const color = colors[type] || colors.basic;
+            const sizes = { basic: 1.0, fast: 0.85, tank: 1.2, sniper: 1.0, burrowing: 1.0, spawner: 1.1, boss: 1.5 };
+            const size = sizes[type] || 1.0;
             const path = currentPath || [];
             if (path.length === 0) { console.error('No path defined!'); return null; }
             const startPos = path[0];
@@ -2482,13 +2490,20 @@
             const startZ = startPos.y * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
             const targetX = firstWaypoint.x * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
             const targetZ = firstWaypoint.y * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
-            const hexColor = '#' + new THREE.Color(color).getHexString();
             const voxelMesh = createVoxelEnemyMesh(type, color);
             const enemy = {
                 mesh: voxelMesh, position: new THREE.Vector3(startX, 8, startZ),
                 target: new THREE.Vector3(targetX, 8, targetZ), path: path, pathIndex: 0,
                 speed: speed, health: health, maxHealth: health, damage: damage,
-                variant: variant, id: Math.random(), type: type
+                variant: variant, id: Math.random(), type: type,
+                dodgeChance: type === 'fast' ? 0.15 : 0,
+                armorReduction: type === 'tank' ? 0.2 : 0,
+                towerDamageMult: type === 'sniper' ? 2 : 1,
+                invisible: type === 'burrowing' ? false : false,
+                invisTimer: type === 'burrowing' ? 0 : 0,
+                summonTimer: type === 'boss' ? 0 : 0,
+                spawnOnDeath: type === 'spawner' ? 2 : 0,
+                hitFlash: 0,
             };
             const hMult = enemyData?.healthMult || 1;
             const sMult = enemyData?.speedMult || 1;
@@ -2770,7 +2785,51 @@
                     if (enemy.glowMesh && enemy.glowMesh.parent) scene.remove(enemy.glowMesh);
                     scene.remove(enemy.mesh);
                     gameState.totalKills = (gameState.totalKills || 0) + 1;
+                    if (enemy.spawnOnDeath > 0) {
+                        for (let s = 0; s < enemy.spawnOnDeath; s++) {
+                            const child = spawnEnemy('basic', 0, gameState.wave, { healthMult: 0.5, speedMult: 1.2 });
+                            if (child) {
+                                child.position.set(enemy.position.x + (Math.random() - 0.5) * 20, 8, enemy.position.z + (Math.random() - 0.5) * 20);
+                                child.mesh.position.copy(child.position);
+                            }
+                        }
+                    }
                     return false;
+                }
+                // Burrowing invisibility toggle
+                if (enemy.type === 'burrowing') {
+                    enemy.invisTimer += delta * 0.06;
+                    if (enemy.invisTimer > 3) {
+                        enemy.invisible = !enemy.invisible;
+                        enemy.invisTimer = 0;
+                        enemy.mesh.visible = !enemy.invisible;
+                        if (enemy.glowMesh) enemy.glowMesh.visible = !enemy.invisible;
+                    }
+                }
+                // Boss summon timer
+                if (enemy.summonTimer !== undefined && enemy.type === 'boss') {
+                    enemy.summonTimer += delta * 0.06;
+                    if (enemy.summonTimer > 5) {
+                        enemy.summonTimer = 0;
+                        const minion = spawnEnemy('fast', 0, gameState.wave, { healthMult: 0.4, speedMult: 1.0 });
+                        if (minion) {
+                            minion.position.set(enemy.position.x + (Math.random() - 0.5) * 15, 8, enemy.position.z + (Math.random() - 0.5) * 15);
+                            minion.mesh.position.copy(minion.position);
+                        }
+                    }
+                }
+                // Hit flash decay
+                if (enemy.hitFlash > 0) {
+                    enemy.hitFlash -= delta * 0.06;
+                    if (enemy.hitFlash <= 0) {
+                        enemy.hitFlash = 0;
+                        enemy.mesh.traverse(child => {
+                            if (child.material && child.material._origEmissive !== undefined) {
+                                child.material.emissiveIntensity = child.material._origEmissive;
+                                child.material.emissive.setHex(child.material._origEmissiveColor || 0x000000);
+                            }
+                        });
+                    }
                 }
                 // Check for tower collision on current tile
                 const enemyGridX = Math.floor(enemy.position.x / tileSize);
@@ -2778,7 +2837,8 @@
                 for (let t = gameState.towers.length - 1; t >= 0; t--) {
                     const tower = gameState.towers[t];
                     if (tower.gridX === enemyGridX && tower.gridZ === enemyGridZ) {
-                        tower.health -= enemy.damage * delta * 0.5;
+                        const towerDmg = enemy.damage * enemy.towerDamageMult * delta * 0.5;
+                        tower.health -= towerDmg;
                         if (tower.health <= 0) {
                             createExplosion(tower.mesh.position.x, tower.mesh.position.y, tower.mesh.position.z, 2);
                             scene.remove(tower.mesh);
@@ -2808,7 +2868,7 @@
                         enemy.position.x += (dx / dist) * moveSpeed;
                         enemy.position.z += (dz / dist) * moveSpeed;
                         enemy.mesh.position.copy(enemy.position);
-                        enemy.mesh.position.y += Math.sin(time * 3 + enemy.id * 10) * 0.3;
+                        enemy.mesh.position.y = enemy.position.y + Math.sin(time * 3 + enemy.id * 10) * 0.3;
                         const angle = Math.atan2(dx, dz);
                         enemy.mesh.rotation.y = angle;
                     }
@@ -2820,7 +2880,7 @@
                     return false;
                 }
                 if (enemy.glowMesh && enemy.glowMesh.parent) {
-                    enemy.glowMesh.position.copy(enemy.position);
+                    enemy.glowMesh.position.copy(enemy.mesh.position);
                 }
                 return true;
             });
@@ -2841,7 +2901,33 @@
                     const dz = proj.target.position.z - proj.mesh.position.z;
                     const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
                     if (dist < 3) {
-                        proj.target.health -= proj.damage;
+                        if (proj.target.invisible) {
+                            scene.remove(proj.mesh);
+                            if (proj.trail) { scene.remove(proj.trail); }
+                            return false;
+                        }
+                        if (proj.target.dodgeChance > 0 && Math.random() < proj.target.dodgeChance) {
+                            proj.target = null;
+                            proj.life = 30;
+                            return true;
+                        }
+                        let dmg = proj.damage;
+                        if (proj.target.armorReduction > 0) {
+                            dmg *= (1 - proj.target.armorReduction);
+                        }
+                        proj.target.health -= dmg;
+                        proj.target.hitFlash = 1;
+                        proj.target.mesh.traverse(child => {
+                            if (child.material) {
+                                if (child.material._origEmissive === undefined) {
+                                    child.material._origEmissive = child.material.emissiveIntensity || 0;
+                                    child.material._origEmissiveColor = child.material.emissive ? child.material.emissive.getHex() : 0;
+                                }
+                                child.material.emissiveIntensity = 1;
+                                child.material.emissive = child.material.emissive || new THREE.Color();
+                                child.material.emissive.setHex(0xffffff);
+                            }
+                        });
                         createExplosion(proj.mesh.position.x, proj.mesh.position.y, proj.mesh.position.z, 0.8);
                         scene.remove(proj.mesh);
                         if (proj.trail) { scene.remove(proj.trail); }
@@ -2984,6 +3070,9 @@
             gameState.energy = Math.min(CONFIG.MAX_ENERGY, gameState.energy + 20);
             if (Math.random() < 0.35) { showEventPopup(); }
             gameState.maxWaveReached = Math.max(gameState.maxWaveReached, gameState.wave);
+            if (gameState.wave % 5 === 0) {
+                gameState.bossesDefeated = (gameState.bossesDefeated || 0) + 1;
+            }
             startPreparationPhase();
             updateUI();
         }
@@ -3002,6 +3091,48 @@
             setTimeout(() => popup.classList.remove('show'), 3000);
         }
 
+        function updatePathTiles() {
+            const time = Date.now() * 0.001;
+            pathSegments.forEach(seg => {
+                if (!seg.animPhase || !seg.mesh || !seg.mesh.material) return;
+                const t = (Math.sin(time * 0.8 + seg.animPhase) + 1) / 2;
+                const baseR = ((seg.baseColor >> 16) & 0xff) / 255;
+                const baseG = ((seg.baseColor >> 8) & 0xff) / 255;
+                const baseB = (seg.baseColor & 0xff) / 255;
+                const greenR = 0x1a / 255;
+                const greenG = 0x8a / 255;
+                const greenB = 0x0a / 255;
+                const r = baseR * (1 - t) + greenR * t;
+                const g = baseG * (1 - t) + greenG * t;
+                const b = baseB * (1 - t) + greenB * t;
+                seg.mesh.material.color.setRGB(r, g, b);
+                seg.mesh.material.emissive.setRGB(r * 0.8, g * 0.8, b * 0.8);
+                seg.mesh.material.emissiveIntensity = 1.0 + t * 1.0;
+            });
+        }
+
+        function scatterDecoyTiles() {
+            const decoyColors = [0x3d2b1f, 0x2e1f0f, 0x4a3728, 0x3b2a1a, 0x2c1a0a];
+            const tileSize = CONFIG.TILE_SIZE;
+            for (let x = 0; x < CONFIG.MAP_WIDTH; x++) {
+                for (let z = 0; z < CONFIG.MAP_HEIGHT; z++) {
+                    if (gameState.pathGrid && gameState.pathGrid[x] && gameState.pathGrid[x][z]) continue;
+                    if (gameState.towers.some(t => t.gridX === x && t.gridZ === z)) continue;
+                    if (Math.random() > 0.1) continue;
+                    const wx = x * tileSize + tileSize / 2;
+                    const wz = z * tileSize + tileSize / 2;
+                    const color = decoyColors[Math.floor(Math.random() * decoyColors.length)];
+                    const geo = new THREE.BoxGeometry(tileSize * 0.5, 1, tileSize * 0.5);
+                    const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.95, metalness: 0.0 });
+                    const tile = new THREE.Mesh(geo, mat);
+                    tile.position.set(wx, 7, wz);
+                    tile.receiveShadow = true;
+                    scene.add(tile);
+                    decoyTiles.push(tile);
+                }
+            }
+        }
+
         let lastEnergyRegen = Date.now();
 
         function animate() {
@@ -3009,6 +3140,7 @@
             if (gameState.gameOver) return;
             const delta = 16;
             const now = Date.now();
+            updatePathTiles();
             if (now - lastEnergyRegen >= 1000) {
                 gameState.energy = Math.min(CONFIG.MAX_ENERGY, gameState.energy + CONFIG.ENERGY_REGEN);
                 lastEnergyRegen = now;
@@ -3266,8 +3398,22 @@
             });
         }
 
-        init();
-        console.log('Starting fresh - wave 1');
+        // Error trapping
+        window.addEventListener('error', (e) => {
+            console.error('CAUGHT ERROR:', e.message, 'at', e.filename + ':' + e.lineno);
+            if (e.error && e.error.stack) console.error('Stack:', e.error.stack);
+        });
+        window.addEventListener('unhandledrejection', (e) => {
+            console.error('UNHANDLED PROMISE:', e.reason);
+        });
+
+        try {
+            init();
+            console.log('Starting fresh - wave 1');
+        } catch (e) {
+            console.error('INIT FAILED:', e.message, 'at line', e.lineNumber);
+            console.error(e.stack);
+        }
     </script>
 </body>
 </html>
