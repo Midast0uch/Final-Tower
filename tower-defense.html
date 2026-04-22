@@ -904,7 +904,7 @@
         function playBuildAnimation(mesh) {
             if (!mesh) return;
             mesh.scale.set(0.01, 0.01, 0.01);
-            buildAnimations.push({ mesh: mesh, progress: 0, speed: 0.08 });
+            buildAnimations.push({ mesh: mesh, progress: 0, speed: 0.25 });
         }
 
         function showRangeIndicator(tower) {
@@ -4383,7 +4383,10 @@
                 proj.life = (proj.life || 0) - 1;
                 if (proj.life <= 0) {
                     scene.remove(proj.mesh);
-                    if (proj.trail) { scene.remove(proj.trail); }
+                    if (proj.trails) {
+                        proj.trails.forEach(t => { if (t.mesh && t.mesh.parent) scene.remove(t.mesh); });
+                        proj.trails = [];
+                    }
                     return false;
                 }
                 if (proj.target && proj.target.mesh && proj.target.mesh.parent) {
@@ -4394,7 +4397,10 @@
                     if (dist < 3) {
                         if (proj.target.invisible) {
                             scene.remove(proj.mesh);
-                            if (proj.trail) { scene.remove(proj.trail); }
+                            if (proj.trails) {
+                                proj.trails.forEach(t => { if (t.mesh && t.mesh.parent) scene.remove(t.mesh); });
+                                proj.trails = [];
+                            }
                             return false;
                         }
                         if (proj.target.dodgeChance > 0 && Math.random() < proj.target.dodgeChance) {
@@ -4429,19 +4435,22 @@
                             proj.target.speedMultiplier = TOWER_TYPES.SLOW.slowFactor || 0.5;
                         }
                         scene.remove(proj.mesh);
-                        if (proj.trail) { scene.remove(proj.trail); }
+                        if (proj.trails) {
+                            proj.trails.forEach(t => { if (t.mesh && t.mesh.parent) scene.remove(t.mesh); });
+                            proj.trails = [];
+                        }
                         return false;
                     }
                     const speed = proj.speed || 8;
                     proj.mesh.position.x += (dx / dist) * speed;
                     proj.mesh.position.y += (dy / dist) * speed;
                     proj.mesh.position.z += (dz / dist) * speed;
-                    if (proj.trail) {
-                        proj.trail.position.copy(proj.mesh.position);
-                    }
                 } else {
                     scene.remove(proj.mesh);
-                    if (proj.trail) { scene.remove(proj.trail); }
+                    if (proj.trails) {
+                        proj.trails.forEach(t => { if (t.mesh && t.mesh.parent) scene.remove(t.mesh); });
+                        proj.trails = [];
+                    }
                     return false;
                 }
                 return true;
@@ -4681,6 +4690,7 @@
             checkWaveCompletion();
             updateEnemies(delta);
             updateProjectiles(delta);
+            createProjectileTrail();
             updateTowerHealthBars();
             updateTerrain(delta);
             // Update death particles
@@ -4909,9 +4919,9 @@
             }
             if (!closestEnemy) return;
             const projColor = TOWER_TYPES[tower.typeKey].color;
-            const projSize = tower.typeKey === 'CANNON' ? 5 : 3;
-            const geo = new THREE.BoxGeometry(projSize, projSize, projSize);
-            const mat = new THREE.MeshStandardMaterial({ color: projColor, roughness: 0.3, metalness: 0.5, emissive: projColor, emissiveIntensity: 0.3 });
+            const projSize = tower.typeKey === 'CANNON' ? 8 : tower.typeKey === 'SNIPER' ? 5 : 6;
+            const geo = new THREE.BoxGeometry(projSize, projSize, projSize * 1.5);
+            const mat = new THREE.MeshStandardMaterial({ color: projColor, roughness: 0.2, metalness: 0.3, emissive: projColor, emissiveIntensity: 0.8 });
             const mesh = new THREE.Mesh(geo, mat);
             mesh.position.copy(towerPos);
             mesh.position.y += 12;
@@ -4933,29 +4943,35 @@
 
         function createProjectileTrail() {
             if (gameState.projectiles.length === 0) return;
-            gameState.projectiles.forEach((proj, idx) => {
-                if (!proj.mesh.parent && !gameState.gameOver) return;
-                const trailGeo = new THREE.SphereGeometry(1.5);
+            gameState.projectiles.forEach(proj => {
+                if (!proj.mesh || !proj.mesh.parent) return;
+                if (!proj.trails) proj.trails = [];
+                const trailSize = proj.typeKey === 'CANNON' ? 3 : 2;
+                const trailGeo = new THREE.BoxGeometry(trailSize, trailSize, trailSize);
                 const trailMat = new THREE.MeshBasicMaterial({
-                    color: TOWER_TYPES[proj.gridX ? 'BASIC' : (proj.typeKey || 'CANNON')].color,
-                    transparent: true, opacity: 0.6
+                    color: TOWER_TYPES[proj.typeKey || 'BASIC'].color,
+                    transparent: true, opacity: 0.5
                 });
                 const trailMesh = new THREE.Mesh(trailGeo, trailMat);
-                trailMesh.position.copy(proj.position).sub(new THREE.Vector3(5, -5, 5));
+                trailMesh.position.copy(proj.mesh.position);
                 scene.add(trailMesh);
-                proj.trails.push({ mesh: trailMesh });
+                proj.trails.push({ mesh: trailMesh, life: 8 });
             });
-            const maxTrails = gameState.projectiles.length * 3;
-            gameState.projectiles.forEach((proj, idx) => {
-                if (!proj.trails) proj.trails = [];
-                while (proj.trails.length > maxTrails) {
-                    const oldTrail = proj.trails.shift();
-                    if (oldTrail && oldTrail.mesh.parent) {
-                        scene.remove(oldTrail.mesh);
-                        oldTrail.mesh.geometry.dispose();
-                        oldTrail.mesh.material.dispose();
+            gameState.projectiles.forEach(proj => {
+                if (!proj.trails) return;
+                proj.trails = proj.trails.filter(t => {
+                    if (!t.mesh || !t.mesh.parent) return false;
+                    t.life--;
+                    t.mesh.material.opacity = Math.max(0, t.life / 8 * 0.5);
+                    t.mesh.scale.multiplyScalar(0.92);
+                    if (t.life <= 0) {
+                        scene.remove(t.mesh);
+                        t.mesh.geometry.dispose();
+                        t.mesh.material.dispose();
+                        return false;
                     }
-                }
+                    return true;
+                });
             });
         }
 
