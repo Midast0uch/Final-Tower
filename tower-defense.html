@@ -2018,6 +2018,7 @@
             const tileCenterX = gridX * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
             const tileCenterZ = gridZ * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
             meshGroup.position.set(tileCenterX, 6, tileCenterZ);
+            meshGroup.scale.set(0, 0, 0);
             scene.add(meshGroup);
             const range = TOWER_TYPES[typeKey].range * CONFIG.TILE_SIZE;
             const rangeGeo = new THREE.RingGeometry(range - 2, range, 32);
