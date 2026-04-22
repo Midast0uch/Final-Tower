@@ -1,0 +1,6 @@
+# MCM SDK Local API Dependencies
+fastapi>=0.100
+uvicorn>=0.20
+
+# MCM SDK (installed from private GitHub repo)
+# pip install git+https://YOUR_TOKEN@github.com/Midast0uch/MCM-SDK.git

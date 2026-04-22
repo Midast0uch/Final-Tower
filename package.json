@@ -8,11 +8,16 @@
     "test:watch": "nodemon --exec node test-runner.js",
     "test:report": "node test-runner.js --report"
   },
-  "keywords": ["tower-defense", "game", "tests", "automation"],
+  "keywords": [
+    "tower-defense",
+    "game",
+    "tests",
+    "automation"
+  ],
   "author": "",
   "license": "MIT",
   "dependencies": {
-    "puppeteer": "^21.6.0",
+    "puppeteer": "^21.11.0",
     "puppeteer-core": "^21.6.0"
   },
   "devDependencies": {

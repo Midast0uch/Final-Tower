@@ -1,0 +1,28 @@
+# Database files (now at root)
+coordinates.db
+coordinates.db-wal
+coordinates.db-shm
+
+# Python
+__pycache__/
+*.pyc
+.ruff_cache/
+.pytest_cache/
+
+# Node
+node_modules/
+
+# Environment / Secrets
+.env
+.env.local
+api/keys.json
+*.key
+secrets/
+
+# Virtual environment
+venv/
+.venv/
+
+# OS
+.DS_Store
+Thumbs.db

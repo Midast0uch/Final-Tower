@@ -52,8 +52,16 @@ Enemies cannot pass through turrets placed on their path. When an enemy encounte
 ## Getting Started
 
 ### Prerequisites
-- A modern web browser (Chrome, Firefox, Edge recommended)
+- A modern web browser (Chrome 80+, Firefox 75+, Edge 80+, Safari 13+)
 - WebGL support
+
+### How to Play
+1. **Enter Name** — Type your name and click "START GAME"
+2. **Main Menu** — Click "PLAY" to start
+3. **Preparation Phase** — You have 60 seconds to place towers
+4. **Start Wave** — Click "START WAVE" to spawn enemies
+5. **Defend** — Towers automatically shoot enemies
+6. **Survive** — Don't let enemies reach the end!
 
 ### Running Locally
 ```bash
@@ -91,14 +99,6 @@ opencode-test/
 - **Decoy Terrain** — Random brown dirt tiles scattered across grass areas for visual confusion and natural aesthetic
 - **Camera Fix** — Camera now properly centers on the map at game start using `updateCameraPosition()`
 
-## Recent Updates
-- **Path Visibility** — Path tiles now pulse between dark brown and saturated green with emissive glow, making the enemy route clearly visible before and during waves
-- **Enemy Glitch Fix** — Fixed visibility flickering bug where all enemies toggled on/off every few frames; now only burrowing moles use invisibility
-- **Game Balance** — Reduced early wave enemy health scaling (from 0.12/0.08 per wave to 0.06/0.04) for smoother difficulty curve
-- **Scene Lighting** — Dimmed ambient and directional lighting so path tile emissive glow is more apparent
-- **Decoy Terrain** — Random brown dirt tiles scattered across grass areas for visual confusion and natural aesthetic
-- **Camera Fix** — Camera now properly centers on the map at game start using `updateCameraPosition()`
-
 ## Development Workflow
 This project uses a coordinate database system for agent memory and workflow tracking. See `AGENTS.md` for details.
 
@@ -108,6 +108,17 @@ This project uses a coordinate database system for agent memory and workflow tra
 - Kill rewards: Basic=10, Fast=8, Tank=15, Sniper=12, Burrowing=15, Spawner=20, Boss=30
 - Wave completion bonus: +20 energy
 - Preparation phase: 45 seconds between waves
+
+## Features
+- ✓ Endless wave system with scaling difficulty
+- ✓ 5 tower types with unique abilities
+- ✓ 7 enemy types with varied behavior
+- ✓ 8 path generation algorithms
+- ✓ Minecraft-style voxel terrain
+- ✓ Login & main menu
+- ✓ Leaderboard & achievements system
+- ✓ Save/load game progress
+- ✓ Animated UI and effects
 
 ---
 

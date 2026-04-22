@@ -587,6 +587,16 @@
         </div>
     </div>
     <script>
+        const VISUAL_ENHANCEMENTS_ENABLED = true;
+
+        const MATERIAL_CACHE = {};
+        function getMaterial(key, props) {
+            if (!MATERIAL_CACHE[key]) {
+                MATERIAL_CACHE[key] = new THREE.MeshStandardMaterial(props);
+            }
+            return MATERIAL_CACHE[key];
+        }
+
         const CONFIG = {
             MAP_WIDTH: 8,
             MAP_HEIGHT: 8,
@@ -673,6 +683,259 @@
         let pathSegments = [];
         let decoyTiles = [];
         let debrisParticles = [];
+        let deathParticles = [];
+        let impactEffects = [];
+        let buildAnimations = [];
+        let waveMarkers = [];
+
+        const ENEMY_KILL_REWARDS = {
+            basic: 5, fast: 8, tank: 12, sniper: 10, burrowing: 8, spawner: 15, boss: 50,
+            stealth: 18, shielded: 22, swarm: 4, splitting: 14,
+            elemental_fire: 16, elemental_ice: 16, elemental_poison: 16,
+            siege: 25, healer: 20, elite_basic: 18
+        };
+
+        function playDeathExplosion(position, type) {
+            const count = type === 'boss' ? 40 : type === 'siege' ? 30 : 20;
+            const color = type === 'elemental_fire' ? 0xff5500 : type === 'boss' ? 0xff0000 : 0xffaa00;
+            for (let i = 0; i < count; i++) {
+                const geo = new THREE.BoxGeometry(1.5, 1.5, 1.5);
+                const mat = new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 0.9 });
+                const mesh = new THREE.Mesh(geo, mat);
+                mesh.position.copy(position);
+                mesh.position.x += (Math.random() - 0.5) * 10;
+                mesh.position.y += (Math.random() - 0.5) * 10;
+                mesh.position.z += (Math.random() - 0.5) * 10;
+                scene.add(mesh);
+                const angle = Math.random() * Math.PI * 2;
+                const speed = 2 + Math.random() * 4;
+                deathParticles.push({
+                    mesh: mesh,
+                    vx: Math.cos(angle) * speed,
+                    vy: 2 + Math.random() * 5,
+                    vz: Math.sin(angle) * speed,
+                    life: 40 + Math.random() * 30,
+                    maxLife: 70,
+                    gravity: 0.15
+                });
+            }
+        }
+
+        function playDeathDissolve(enemy) {
+            if (!enemy.mesh) return;
+            enemy.mesh.traverse(child => {
+                if (child.material) {
+                    child.material.transparent = true;
+                }
+            });
+            enemy.userData = enemy.userData || {};
+            enemy.userData.isDissolving = true;
+            enemy.userData.dissolveLife = 60;
+        }
+
+        function playDeathCollapse(enemy) {
+            if (!enemy.mesh) return;
+            enemy.userData = enemy.userData || {};
+            enemy.userData.isCollapsing = true;
+            enemy.userData.collapseLife = 40;
+            enemy.userData.collapseBaseRot = enemy.mesh.rotation.x;
+        }
+
+        function applyDamageVisuals(mesh, damagePercent) {
+            if (!mesh || !VISUAL_ENHANCEMENTS_ENABLED) return;
+            mesh.traverse(child => {
+                if (!child.isMesh || child.userData.isCrack || child.userData.isSmoke || child.userData.isGlow) return;
+                const w = child.geometry && child.geometry.parameters ? child.geometry.parameters.width || 2 : 2;
+                const h = child.geometry && child.geometry.parameters ? child.geometry.parameters.height || 2 : 2;
+                const d = child.geometry && child.geometry.parameters ? child.geometry.parameters.depth || 2 : 2;
+                if (damagePercent >= 0.25 && damagePercent < 0.5 && !child.userData.hasCrack) {
+                    child.userData.hasCrack = true;
+                    const crackGeo = new THREE.BoxGeometry(0.4, 0.4, 0.1);
+                    const crackMat = new THREE.MeshBasicMaterial({ color: 0x1a1a1a });
+                    const crack = new THREE.Mesh(crackGeo, crackMat);
+                    crack.userData.isCrack = true;
+                    crack.position.set((Math.random() - 0.5) * w, (Math.random() - 0.5) * h, d / 2 + 0.1);
+                    child.add(crack);
+                }
+                if (damagePercent >= 0.5 && damagePercent < 0.75 && !child.userData.hasSmoke) {
+                    child.userData.hasSmoke = true;
+                    const smokeGeo = new THREE.BoxGeometry(0.6, 0.6, 0.6);
+                    const smokeMat = new THREE.MeshBasicMaterial({ color: 0x555555, transparent: true, opacity: 0.4 });
+                    const smoke = new THREE.Mesh(smokeGeo, smokeMat);
+                    smoke.userData.isSmoke = true;
+                    smoke.position.set((Math.random() - 0.5) * w * 1.2, h / 2 + 0.5, (Math.random() - 0.5) * d * 1.2);
+                    child.add(smoke);
+                }
+                if (damagePercent >= 0.75 && !child.userData.hasGlow) {
+                    child.userData.hasGlow = true;
+                    const glowGeo = new THREE.BoxGeometry(w * 0.7, h * 0.7, d * 0.7);
+                    const glowMat = new THREE.MeshBasicMaterial({ color: 0xff4400, transparent: true, opacity: 0.25 });
+                    const glow = new THREE.Mesh(glowGeo, glowMat);
+                    glow.userData.isGlow = true;
+                    glow.position.set(0, 0, 0);
+                    child.add(glow);
+                }
+            });
+        }
+
+        function applyStatusVisuals(enemy) {
+            if (!enemy || !enemy.mesh || !enemy.status || !VISUAL_ENHANCEMENTS_ENABLED) return;
+            const mesh = enemy.mesh;
+            if (enemy.status === 'SLOWED' && !mesh.userData.slowRing) {
+                const ringGeo = new THREE.RingGeometry(6, 7, 16);
+                const ringMat = new THREE.MeshBasicMaterial({ color: 0x00aaff, transparent: true, opacity: 0.4, side: THREE.DoubleSide });
+                const ring = new THREE.Mesh(ringGeo, ringMat);
+                ring.rotation.x = -Math.PI / 2;
+                ring.position.y = 1;
+                mesh.add(ring);
+                mesh.userData.slowRing = ring;
+            }
+            if (enemy.status === 'BURNING' && !mesh.userData.burnFlames) {
+                const flames = [];
+                for (let i = 0; i < 3; i++) {
+                    const fGeo = new THREE.BoxGeometry(1, 2, 1);
+                    const fMat = new THREE.MeshBasicMaterial({ color: 0xff5500, transparent: true, opacity: 0.7 });
+                    const f = new THREE.Mesh(fGeo, fMat);
+                    f.position.set((Math.random() - 0.5) * 6, Math.random() * 4 + 2, (Math.random() - 0.5) * 6);
+                    mesh.add(f);
+                    flames.push(f);
+                }
+                mesh.userData.burnFlames = flames;
+            }
+            if (enemy.status === 'FROZEN' && !mesh.userData.iceShell) {
+                const iceGeo = new THREE.BoxGeometry(10, 12, 10);
+                const iceMat = new THREE.MeshStandardMaterial({ color: 0xaaddff, transparent: true, opacity: 0.35, roughness: 0.1, metalness: 0.2 });
+                const ice = new THREE.Mesh(iceGeo, iceMat);
+                ice.position.y = 6;
+                mesh.add(ice);
+                mesh.userData.iceShell = ice;
+            }
+            if (enemy.status === 'POISONED' && !mesh.userData.poisonBubbles) {
+                const bubbles = [];
+                for (let i = 0; i < 4; i++) {
+                    const bGeo = new THREE.SphereGeometry(0.6, 6, 6);
+                    const bMat = new THREE.MeshBasicMaterial({ color: 0x55ff00, transparent: true, opacity: 0.6 });
+                    const b = new THREE.Mesh(bGeo, bMat);
+                    b.position.set((Math.random() - 0.5) * 8, Math.random() * 6 + 2, (Math.random() - 0.5) * 8);
+                    mesh.add(b);
+                    bubbles.push(b);
+                }
+                mesh.userData.poisonBubbles = bubbles;
+            }
+        }
+
+        function removeStatusVisuals(enemy) {
+            if (!enemy || !enemy.mesh) return;
+            const mesh = enemy.mesh;
+            if (mesh.userData.slowRing) {
+                mesh.remove(mesh.userData.slowRing);
+                mesh.userData.slowRing = null;
+            }
+            if (mesh.userData.burnFlames) {
+                mesh.userData.burnFlames.forEach(f => mesh.remove(f));
+                mesh.userData.burnFlames = null;
+            }
+            if (mesh.userData.iceShell) {
+                mesh.remove(mesh.userData.iceShell);
+                mesh.userData.iceShell = null;
+            }
+            if (mesh.userData.poisonBubbles) {
+                mesh.userData.poisonBubbles.forEach(b => mesh.remove(b));
+                mesh.userData.poisonBubbles = null;
+            }
+        }
+
+        function createImpactEffect(position, type) {
+            const typeKey = type || 'BASIC';
+            if (typeKey === 'CANNON') {
+                for (let i = 0; i < 12; i++) {
+                    const geo = new THREE.BoxGeometry(2, 2, 2);
+                    const mat = new THREE.MeshBasicMaterial({ color: 0xffaa00, transparent: true, opacity: 0.9 });
+                    const mesh = new THREE.Mesh(geo, mat);
+                    mesh.position.copy(position);
+                    mesh.position.x += (Math.random() - 0.5) * 6;
+                    mesh.position.y += (Math.random() - 0.5) * 6;
+                    mesh.position.z += (Math.random() - 0.5) * 6;
+                    scene.add(mesh);
+                    impactEffects.push({ mesh: mesh, life: 30, vy: 1 + Math.random() * 2, vx: (Math.random() - 0.5) * 2, vz: (Math.random() - 0.5) * 2 });
+                }
+                const smokeGeo = new THREE.BoxGeometry(4, 4, 4);
+                const smokeMat = new THREE.MeshBasicMaterial({ color: 0x555555, transparent: true, opacity: 0.5 });
+                const smoke = new THREE.Mesh(smokeGeo, smokeMat);
+                smoke.position.copy(position);
+                scene.add(smoke);
+                impactEffects.push({ mesh: smoke, life: 50, vy: 0.5, vx: 0, vz: 0, grow: true });
+            } else if (typeKey === 'SNIPER') {
+                for (let i = 0; i < 8; i++) {
+                    const geo = new THREE.BoxGeometry(1, 1, 1);
+                    const mat = new THREE.MeshBasicMaterial({ color: 0x4ecdc4, transparent: true, opacity: 0.9 });
+                    const mesh = new THREE.Mesh(geo, mat);
+                    mesh.position.copy(position);
+                    scene.add(mesh);
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = 1 + Math.random() * 3;
+                    impactEffects.push({ mesh: mesh, life: 25, vy: 1 + Math.random(), vx: Math.cos(angle) * speed, vz: Math.sin(angle) * speed });
+                }
+            } else if (typeKey === 'SLOW') {
+                for (let i = 0; i < 6; i++) {
+                    const geo = new THREE.BoxGeometry(1.2, 1.2, 1.2);
+                    const mat = new THREE.MeshBasicMaterial({ color: 0x74c0fc, transparent: true, opacity: 0.8 });
+                    const mesh = new THREE.Mesh(geo, mat);
+                    mesh.position.copy(position);
+                    scene.add(mesh);
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = 0.5 + Math.random() * 1.5;
+                    impactEffects.push({ mesh: mesh, life: 20, vy: 0.5 + Math.random(), vx: Math.cos(angle) * speed, vz: Math.sin(angle) * speed });
+                }
+            } else {
+                for (let i = 0; i < 5; i++) {
+                    const geo = new THREE.BoxGeometry(0.8, 0.8, 0.8);
+                    const mat = new THREE.MeshBasicMaterial({ color: 0xffffaa, transparent: true, opacity: 0.9 });
+                    const mesh = new THREE.Mesh(geo, mat);
+                    mesh.position.copy(position);
+                    scene.add(mesh);
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = 1 + Math.random() * 2;
+                    impactEffects.push({ mesh: mesh, life: 20, vy: 1 + Math.random(), vx: Math.cos(angle) * speed, vz: Math.sin(angle) * speed });
+                }
+            }
+        }
+
+        function playBuildAnimation(mesh) {
+            if (!mesh) return;
+            mesh.scale.set(0.01, 0.01, 0.01);
+            buildAnimations.push({ mesh: mesh, progress: 0, speed: 0.08 });
+        }
+
+        function showRangeIndicator(tower) {
+            if (!tower || !tower.rangeIndicator) return;
+            tower.rangeIndicator.material.opacity = 0.25;
+        }
+
+        function hideRangeIndicator(tower) {
+            if (!tower || !tower.rangeIndicator) return;
+            tower.rangeIndicator.material.opacity = 0;
+        }
+
+        function showWaveIncoming(waveNum) {
+            const path = currentPath || [];
+            if (path.length === 0) return;
+            const start = path[0];
+            const x = start.x * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
+            const z = start.y * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
+            const beaconGeo = new THREE.CylinderGeometry(3, 3, 40, 8);
+            const beaconMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.6 });
+            const beacon = new THREE.Mesh(beaconGeo, beaconMat);
+            beacon.position.set(x, 20, z);
+            scene.add(beacon);
+            const ringGeo = new THREE.RingGeometry(15, 18, 32);
+            const ringMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.4, side: THREE.DoubleSide });
+            const ring = new THREE.Mesh(ringGeo, ringMat);
+            ring.rotation.x = -Math.PI / 2;
+            ring.position.set(x, 1, z);
+            scene.add(ring);
+            waveMarkers.push({ beacon: beacon, ring: ring, life: 120 });
+        }
 
         class PathGenerator {
             static createPath(waveNumber) {
@@ -983,6 +1246,237 @@
                 }
                 return true;
             }
+            
+            static createPathFromEdge(mapW, mapH, wave, entryEdge) {
+                const path = [];
+                const windingFactor = Math.min(0.5, 0.15 + (wave - 15) * 0.02);
+                const extraLength = Math.min(mapW * 0.5, (wave - 15) * 0.5);
+                
+                if (entryEdge === 'left') {
+                    let y = Math.floor(mapH / 2);
+                    const useHybrid = wave >= 15 && Math.random() < 0.4;
+                    const targetLength = mapW + extraLength;
+                    
+                    for (let x = 0; x < mapW || path.length < targetLength; x++) {
+                        if (x >= mapW) break;
+                        path.push({ x, y });
+                        
+                        if (useHybrid) {
+                            if (Math.random() < 0.3 + windingFactor) {
+                                const turnDir = Math.random() > 0.5 ? 1 : -1;
+                                if (y + turnDir >= 0 && y + turnDir < mapH) y += turnDir;
+                            }
+                            if (Math.random() < windingFactor * 0.5 && path.length < targetLength) {
+                                const extraY = y + (Math.random() > 0.5 ? 1 : -1);
+                                if (extraY >= 0 && extraY < mapH) path.push({ x, y: extraY });
+                            }
+                        } else {
+                            if (Math.random() < 0.2 && y > 0) y--;
+                            else if (Math.random() < 0.2 && y < mapH - 1) y++;
+                        }
+                    }
+                } else if (entryEdge === 'top') {
+                    let x = 0, y = 0;
+                    const useHybrid = wave >= 15 && Math.random() < 0.4;
+                    const targetLength = mapW + extraLength;
+                    path.push({ x, y });
+                    
+                    while ((x < mapW - 1 || path.length < targetLength) && x < mapW) {
+                        const rand = Math.random();
+                        if (useHybrid) {
+                            if (rand < 0.3 + windingFactor * 0.3) x++;
+                            else if (rand < 0.5 + windingFactor * 0.2 && y < mapH - 1) y++;
+                            else if (rand < 0.7 + windingFactor * 0.2 && y > 0) y--;
+                            else x++;
+                            if (Math.random() < windingFactor && y + 1 < mapH && path.length < targetLength) {
+                                path.push({ x, y: y + 1 });
+                            }
+                        } else {
+                            if (rand < 0.4) x++;
+                            else if (rand < 0.7 && y < mapH - 1) y++;
+                            else if (y > 0) y--;
+                        }
+                        path.push({ x, y });
+                    }
+                    const last = path[path.length - 1];
+                    for (let xi = last.x + 1; xi < mapW; xi++) path.push({ x: xi, y: last.y });
+                } else if (entryEdge === 'bottom') {
+                    let x = 0, y = mapH - 1;
+                    const useHybrid = wave >= 15 && Math.random() < 0.4;
+                    const targetLength = mapW + extraLength;
+                    path.push({ x, y });
+                    
+                    while ((x < mapW - 1 || path.length < targetLength) && x < mapW) {
+                        const rand = Math.random();
+                        if (useHybrid) {
+                            if (rand < 0.3 + windingFactor * 0.3) x++;
+                            else if (rand < 0.5 + windingFactor * 0.1 && y > 0) y--;
+                            else if (rand < 0.7 + windingFactor * 0.1 && y < mapH - 1) y++;
+                            else x++;
+                            if (Math.random() < 0.1 + windingFactor * 0.2 && path.length < targetLength) {
+                                const spurY = y + (Math.random() > 0.5 ? 1 : -1);
+                                if (spurY >= 0 && spurY < mapH) path.push({ x, y: spurY });
+                            }
+                        } else {
+                            if (rand < 0.4) x++;
+                            else if (rand < 0.7 && y > 0) y--;
+                            else if (y < mapH - 1) y++;
+                        }
+                        path.push({ x, y });
+                    }
+                    const last = path[path.length - 1];
+                    for (let xi = last.x + 1; xi < mapW; xi++) path.push({ x: xi, y: last.y });
+                }
+                return path;
+            }
+            
+            static createMultiplePaths(waveNumber) {
+                const mapW = CONFIG.MAP_WIDTH;
+                const mapH = CONFIG.MAP_HEIGHT;
+                
+                // Determine number of paths based on wave
+                let pathCount = 1;
+                if (waveNumber >= 35) pathCount = 4;
+                else if (waveNumber >= 25) pathCount = 3;
+                else if (waveNumber >= 15) pathCount = 2;
+                
+                const paths = [];
+                const usedEdges = new Set();
+                
+                // Edge selection strategy to avoid overlaps
+                const edges = ['left', 'top', 'bottom'];
+                
+                for (let i = 0; i < pathCount; i++) {
+                    // Pick an unused edge when possible
+                    let availableEdges = edges.filter(e => !usedEdges.has(e) || edges.length === pathCount);
+                    if (availableEdges.length === 0) availableEdges = edges;
+                    
+                    const entryEdge = availableEdges[Math.floor(Math.random() * availableEdges.length)];
+                    usedEdges.add(entryEdge);
+                    
+                    let path = this.createPathFromEdge(mapW, mapH, waveNumber, entryEdge);
+                    
+                    // Ensure path validity
+                    if (!this.validatePath(path)) {
+                        path = this.generateSerpentinePath(mapW, mapH, waveNumber);
+                    }
+                    
+                    // Avoid overlaps with existing paths
+                    let attempts = 0;
+                    while (attempts < 10 && paths.some(p => this.pathsOverlap(p, path))) {
+                        path = this.createPathFromEdge(mapW, mapH, waveNumber + attempts, entryEdge);
+                        if (!this.validatePath(path)) {
+                            path = this.generateSerpentinePath(mapW, mapH, waveNumber + attempts);
+                        }
+                        attempts++;
+                    }
+                    
+                    // Add branching for wave 20+
+                    if (waveNumber >= 20 && pathCount === 1) {
+                        path = this.addPathBranching(path, mapW, mapH);
+                    }
+                    
+                    paths.push(path);
+                }
+                
+                return paths;
+            }
+            
+            static addPathBranching(path, mapW, mapH) {
+                if (path.length < 10) return path;
+                
+                // Find a midpoint to split
+                const splitIndex = Math.floor(path.length * 0.4 + Math.random() * path.length * 0.2);
+                const splitPoint = path[splitIndex];
+                
+                // Create a branch that diverges and rejoins
+                const branch = [];
+                let bx = splitPoint.x;
+                let by = splitPoint.y;
+                const targetX = splitPoint.x + Math.floor(mapW * 0.3);
+                const targetY = by + (Math.random() > 0.5 ? 1 : -1) * Math.floor(mapH * 0.3);
+                
+                while (bx < targetX && branch.length < mapW * 0.4) {
+                    branch.push({ x: bx, y: by });
+                    bx++;
+                    if (Math.random() < 0.3) {
+                        const ny = by + (Math.random() > 0.5 ? 1 : -1);
+                        if (ny >= 0 && ny < mapH) by = ny;
+                    }
+                    branch.push({ x: bx, y: by });
+                }
+                
+                // Rejoin to original path
+                const rejoinedIndex = Math.min(splitIndex + Math.floor(path.length * 0.3), path.length - 1);
+                for (let i = rejoinedIndex; i >= splitIndex; i--) {
+                    if (!branch.some(p => p.x === path[i].x && p.y === path[i].y)) {
+                        branch.push(path[i]);
+                    }
+                }
+                
+                // Insert branch between split and rejoin
+                const newPath = path.slice(0, splitIndex + 1).concat(branch).concat(path.slice(rejoinedIndex + 1));
+                return newPath;
+            }
+            
+            static pathsOverlap(path1, path2) {
+                const tiles1 = new Set(path1.map(p => `${p.x},${p.y}`));
+                return path2.some(p => tiles1.has(`${p.x},${p.y}`));
+            }
+            
+            static generateHybridSerpSpiral(mapW, mapH, wave) {
+                const path = [];
+                const midpoint = Math.floor(mapW / 2);
+                let y = Math.floor(mapH / 2);
+                
+                for (let x = 0; x < midpoint; x++) {
+                    path.push({ x, y });
+                    if (Math.random() < 0.2 && y > 0) y--;
+                    else if (Math.random() < 0.2 && y < mapH - 1) y++;
+                }
+                
+                const direction = Math.random() > 0.5 ? 1 : -1;
+                for (let i = 0; i < 3; i++) {
+                    y += direction;
+                    if (y < 0 || y >= mapH) break;
+                    path.push({ x: midpoint, y });
+                }
+                
+                const visited = new Set();
+                let sx = midpoint, dx = 1, dy = 0;
+                let steps = 0;
+                const maxSteps = mapW * mapH;
+                
+                while (steps < maxSteps && path.length < mapW * mapH * 0.6) {
+                    const key = `${sx},${y}`;
+                    if (sx < midpoint || sx >= mapW || y < 0 || y >= mapH || visited.has(key)) {
+                        const turns = [{ dx: 0, dy: 1 }, { dx: 0, dy: -1 }, { dx: 1, dy: 0 }];
+                        let turned = false;
+                        for (const t of turns) {
+                            const nx = sx + t.dx;
+                            const ny = y + t.dy;
+                            const nkey = `${nx},${ny}`;
+                            if (nx >= 0 && nx < mapW && ny >= 0 && ny < mapH && !visited.has(nkey)) {
+                                dx = t.dx; dy = t.dy;
+                                turned = true;
+                                break;
+                            }
+                        }
+                        if (!turned) break;
+                        continue;
+                    }
+                    visited.add(key);
+                    path.push({ x: sx, y });
+                    sx += dx; y += dy;
+                    steps++;
+                }
+                
+                if (path.length > 0 && path[path.length - 1].x < mapW - 1) {
+                    const last = path[path.length - 1];
+                    for (let xi = last.x + 1; xi < mapW; xi++) path.push({ x: xi, y: last.y });
+                }
+                return path;
+            }
         }
 
         function generateWaveEnemies(waveNum) {
@@ -998,6 +1492,16 @@
             const sniperChance = Math.min(0.15, 0.03 + waveNum * 0.01);
             const burrowChance = Math.min(0.12, waveNum * 0.008);
             const spawnerChance = Math.min(0.08, waveNum >= 8 ? 0.05 : 0);
+            const swarmChance = Math.min(0.14, waveNum >= 4 ? 0.1 : 0);
+            const stealthChance = Math.min(0.12, waveNum >= 5 ? 0.08 : 0);
+            const eliteBasicChance = Math.min(0.15, waveNum >= 6 ? 0.1 : 0);
+            const shieldedChance = Math.min(0.10, waveNum >= 7 ? 0.06 : 0);
+            const healerChance = Math.min(0.08, waveNum >= 8 ? 0.05 : 0);
+            const splittingChance = Math.min(0.06, waveNum >= 9 ? 0.04 : 0);
+            const fireChance = Math.min(0.07, waveNum >= 10 ? 0.05 : 0);
+            const iceChance = Math.min(0.07, waveNum >= 11 ? 0.05 : 0);
+            const poisonChance = Math.min(0.07, waveNum >= 12 ? 0.05 : 0);
+            const siegeChance = Math.min(0.04, waveNum >= 14 ? 0.03 : 0);
             
             for (let i = 0; i < enemyCount; i++) {
                 const roll = Math.random();
@@ -1015,6 +1519,26 @@
                     type = 'tank';
                 } else if (roll < spawnerChance + burrowChance + sniperChance + tankChance + fastChance) {
                     type = 'fast';
+                } else if (roll < spawnerChance + burrowChance + sniperChance + tankChance + fastChance + swarmChance && waveNum >= 4) {
+                    type = 'swarm';
+                } else if (roll < spawnerChance + burrowChance + sniperChance + tankChance + fastChance + swarmChance + stealthChance && waveNum >= 5) {
+                    type = 'stealth';
+                } else if (roll < spawnerChance + burrowChance + sniperChance + tankChance + fastChance + swarmChance + stealthChance + eliteBasicChance && waveNum >= 6) {
+                    type = 'elite_basic';
+                } else if (roll < spawnerChance + burrowChance + sniperChance + tankChance + fastChance + swarmChance + stealthChance + eliteBasicChance + shieldedChance && waveNum >= 7) {
+                    type = 'shielded';
+                } else if (roll < spawnerChance + burrowChance + sniperChance + tankChance + fastChance + swarmChance + stealthChance + eliteBasicChance + shieldedChance + healerChance && waveNum >= 8) {
+                    type = 'healer';
+                } else if (roll < spawnerChance + burrowChance + sniperChance + tankChance + fastChance + swarmChance + stealthChance + eliteBasicChance + shieldedChance + healerChance + splittingChance && waveNum >= 9) {
+                    type = 'splitting';
+                } else if (roll < spawnerChance + burrowChance + sniperChance + tankChance + fastChance + swarmChance + stealthChance + eliteBasicChance + shieldedChance + healerChance + splittingChance + fireChance && waveNum >= 10) {
+                    type = 'elemental_fire';
+                } else if (roll < spawnerChance + burrowChance + sniperChance + tankChance + fastChance + swarmChance + stealthChance + eliteBasicChance + shieldedChance + healerChance + splittingChance + fireChance + iceChance && waveNum >= 11) {
+                    type = 'elemental_ice';
+                } else if (roll < spawnerChance + burrowChance + sniperChance + tankChance + fastChance + swarmChance + stealthChance + eliteBasicChance + shieldedChance + healerChance + splittingChance + fireChance + iceChance + poisonChance && waveNum >= 12) {
+                    type = 'elemental_poison';
+                } else if (roll < spawnerChance + burrowChance + sniperChance + tankChance + fastChance + swarmChance + stealthChance + eliteBasicChance + shieldedChance + healerChance + splittingChance + fireChance + iceChance + poisonChance + siegeChance && waveNum >= 14) {
+                    type = 'siege';
                 }
                 
                 const healthMult = 1 + (waveNum * 0.06);
@@ -1050,19 +1574,34 @@
         const pathOptions = { mainPath: currentPath };
 
         function selectPathForWave(waveNum) {
+            // For wave 15+, generate multiple paths
+            if (waveNum >= 15) {
+                const paths = PathGenerator.createMultiplePaths(waveNum);
+                // Store each path with a unique key
+                pathOptions.mainPath = paths[0] || [];
+                for (let i = 0; i < paths.length; i++) {
+                    pathOptions[`path${i}`] = paths[i];
+                }
+                currentPath = paths[0] || [];
+                return paths;
+            }
+            
+            // For waves < 15, use single path (original behavior)
             let attempts = 0;
             while (attempts < 10) {
                 const path = PathGenerator.createPath(waveNum + attempts);
                 if (PathGenerator.validatePath(path)) {
                     currentPath = path;
                     pathOptions.mainPath = path;
-                    return path;
+                    pathOptions.path0 = path;
+                    return [path];
                 }
                 attempts++;
             }
             currentPath = PathGenerator.generateSerpentinePath(CONFIG.MAP_WIDTH, CONFIG.MAP_HEIGHT, 1);
             pathOptions.mainPath = currentPath;
-            return currentPath;
+            pathOptions.path0 = currentPath;
+            return [currentPath];
         }
 
         function getWaypointAt(index, pathName) {
@@ -1317,7 +1856,8 @@
                 const towerDef = TOWER_TYPES[gameState.selectedTower];
                 if (gameState.energy < towerDef.cost) { showEnergyPopup(e.clientX, e.clientY, -50); return; }
                 gameState.energy -= towerDef.cost;
-                createTower(gridX, gridZ, gameState.selectedTower);
+                const tower = createTower(gridX, gridZ, gameState.selectedTower);
+                if (tower && tower.mesh) playBuildAnimation(tower.mesh);
                 updateUI();
             });
         }
@@ -1338,55 +1878,141 @@
                 const baseMat = new THREE.MeshStandardMaterial({ color: 0x4a5568, roughness: 0.6, metalness: 0.15 });
                 const topMat = new THREE.MeshStandardMaterial({ color: 0x718096, roughness: 0.5, metalness: 0.2 });
                 const barrelMat = new THREE.MeshStandardMaterial({ color: 0x2d3748, roughness: 0.4, metalness: 0.3 });
-                voxel(28, 4, 28, 0, 2, 0, baseMat);
-                voxel(24, 4, 24, 0, 6, 0, baseMat);
-                voxel(20, 4, 20, 0, 10, 0, topMat);
-                voxel(16, 3, 16, 0, 13.5, 0, topMat);
-                barrel = voxel(4, 4, 16, 12, 13, 0, barrelMat);
-                head = meshGroup.children[meshGroup.children.length - 2];
+                const accentMat = new THREE.MeshStandardMaterial({ color: 0x5a6578, roughness: 0.5, metalness: 0.25 });
+                voxel(30, 3, 30, 0, 1.5, 0, baseMat);
+                voxel(28, 4, 28, 0, 5, 0, baseMat);
+                voxel(24, 4, 24, 0, 9, 0, baseMat);
+                voxel(20, 4, 20, 0, 13, 0, topMat);
+                voxel(3, 6, 3, -10, 10, -10, accentMat);
+                voxel(3, 6, 3, 10, 10, -10, accentMat);
+                voxel(3, 6, 3, -10, 10, 10, accentMat);
+                voxel(3, 6, 3, 10, 10, 10, accentMat);
+                barrel = voxel(4, 4, 18, 12, 13, 0, barrelMat);
+                barrel.userData.isBarrel = true;
+                voxel(5, 5, 3, 12, 13, 10, accentMat);
+                voxel(2, 2, 1, 12, 13, 11.5, new THREE.MeshStandardMaterial({ color: 0x111111, roughness: 0.9, metalness: 0.0 }));
+                voxel(3, 1, 6, 12, 11, 4, accentMat);
+                const sensorMat = new THREE.MeshStandardMaterial({ color: 0x00ff00, roughness: 0.2, metalness: 0.5, emissive: 0x00ff00, emissiveIntensity: 0.4 });
+                voxel(2, 2, 1, 0, 15.5, 8, sensorMat);
+                voxel(16, 2, 2, 0, 9, 10, accentMat);
+                head = barrel;
             } else if (typeKey === 'SNIPER') {
                 const baseMat = new THREE.MeshStandardMaterial({ color: 0x553c9a, roughness: 0.5, metalness: 0.2 });
                 const bodyMat = new THREE.MeshStandardMaterial({ color: 0x6b46c1, roughness: 0.45, metalness: 0.25 });
                 const barrelMat = new THREE.MeshStandardMaterial({ color: 0x1a202c, roughness: 0.3, metalness: 0.4 });
                 const scopeMat = new THREE.MeshStandardMaterial({ color: 0xe53e3e, roughness: 0.2, metalness: 0.5, emissive: 0xe53e3e, emissiveIntensity: 0.3 });
-                voxel(30, 4, 30, 0, 2, 0, baseMat);
-                voxel(26, 4, 26, 0, 6, 0, baseMat);
-                voxel(20, 5, 20, 0, 10.5, 0, bodyMat);
-                voxel(18, 5, 18, 0, 15.5, 0, bodyMat);
-                voxel(16, 4, 16, 0, 19.5, 0, bodyMat);
-                barrel = voxel(3, 3, 28, 18, 18, 0, barrelMat);
-                voxel(5, 5, 5, 28, 18, 0, scopeMat);
-                head = meshGroup.children[meshGroup.children.length - 3];
+                const accentMat = new THREE.MeshStandardMaterial({ color: 0x7c5cbf, roughness: 0.4, metalness: 0.3 });
+                voxel(32, 3, 32, 0, 1.5, 0, baseMat);
+                voxel(30, 4, 30, 0, 5, 0, baseMat);
+                voxel(4, 6, 4, -12, 5, -12, accentMat);
+                voxel(4, 6, 4, 12, 5, -12, accentMat);
+                voxel(4, 6, 4, 0, 5, 14, accentMat);
+                voxel(26, 4, 26, 0, 9, 0, baseMat);
+                voxel(20, 5, 20, 0, 13.5, 0, bodyMat);
+                voxel(18, 5, 18, 0, 18.5, 0, bodyMat);
+                voxel(16, 4, 16, 0, 22.5, 0, bodyMat);
+                barrel = voxel(3, 3, 32, 20, 20, 0, barrelMat);
+                barrel.userData.isBarrel = true;
+                voxel(5, 5, 4, 14, 20, 0, accentMat);
+                voxel(2, 6, 2, 18, 16, 16, accentMat);
+                voxel(2, 6, 2, 22, 16, 16, accentMat);
+                voxel(4, 4, 3, 20, 20, 17.5, accentMat);
+                voxel(4, 3, 4, 28, 21, 0, accentMat);
+                voxel(5, 5, 8, 28, 23, 0, scopeMat);
+                const lensMat = new THREE.MeshStandardMaterial({ color: 0xff0000, roughness: 0.1, metalness: 0.8, emissive: 0xff0000, emissiveIntensity: 0.5 });
+                voxel(3, 3, 1, 28, 23, 4.5, lensMat);
+                const windSensorMat = new THREE.MeshStandardMaterial({ color: 0x00ffff, roughness: 0.2, metalness: 0.5, emissive: 0x00ffff, emissiveIntensity: 0.3 });
+                voxel(2, 2, 2, -10, 24, 0, windSensorMat);
+                voxel(3, 2, 3, 0, 24.5, 8, accentMat);
+                head = barrel;
             } else if (typeKey === 'CANNON') {
                 const baseMat = new THREE.MeshStandardMaterial({ color: 0xc53030, roughness: 0.6, metalness: 0.15 });
                 const topMat = new THREE.MeshStandardMaterial({ color: 0x9b2c2c, roughness: 0.55, metalness: 0.2 });
                 const barrelMat = new THREE.MeshStandardMaterial({ color: 0x1a202c, roughness: 0.35, metalness: 0.35 });
-                voxel(34, 4, 34, 0, 2, 0, baseMat);
-                voxel(30, 4, 30, 0, 6, 0, baseMat);
-                voxel(26, 4, 26, 0, 10, 0, topMat);
-                voxel(22, 4, 22, 0, 14, 0, topMat);
-                barrel = voxel(6, 6, 20, 14, 12, 0, barrelMat);
-                voxel(6, 6, 20, 14, 12, 8, barrelMat);
-                head = meshGroup.children[meshGroup.children.length - 3];
+                const accentMat = new THREE.MeshStandardMaterial({ color: 0xd44040, roughness: 0.5, metalness: 0.25 });
+                voxel(36, 3, 36, 0, 1.5, 0, baseMat);
+                voxel(34, 4, 34, 0, 5, 0, baseMat);
+                voxel(30, 4, 30, 0, 9, 0, baseMat);
+                voxel(2, 2, 2, -15, 5, -15, accentMat);
+                voxel(2, 2, 2, 15, 5, -15, accentMat);
+                voxel(2, 2, 2, -15, 5, 15, accentMat);
+                voxel(2, 2, 2, 15, 5, 15, accentMat);
+                voxel(26, 4, 26, 0, 13, 0, topMat);
+                voxel(22, 4, 22, 0, 17, 0, topMat);
+                voxel(8, 8, 8, 14, 14, 0, accentMat);
+                voxel(8, 8, 8, 14, 14, 8, accentMat);
+                barrel = voxel(6, 6, 24, 14, 14, 0, barrelMat);
+                barrel.userData.isBarrel = true;
+                voxel(6, 6, 24, 14, 14, 8, barrelMat);
+                voxel(8, 8, 3, 14, 14, 13.5, accentMat);
+                voxel(8, 8, 3, 14, 14, 21.5, accentMat);
+                voxel(4, 3, 4, 8, 12, 0, accentMat);
+                voxel(4, 3, 4, 8, 12, 8, accentMat);
+                voxel(6, 5, 6, -10, 10, -10, accentMat);
+                voxel(6, 5, 6, -10, 10, 10, accentMat);
+                voxel(12, 8, 2, -8, 16, -12, accentMat);
+                head = barrel;
             } else if (typeKey === 'SLOW') {
                 const baseMat = new THREE.MeshStandardMaterial({ color: 0x2b6cb0, roughness: 0.5, metalness: 0.1 });
                 const crystalMat = new THREE.MeshStandardMaterial({ color: 0x63b3ed, roughness: 0.2, metalness: 0.3, emissive: 0x63b3ed, emissiveIntensity: 0.4 });
-                voxel(26, 4, 26, 0, 2, 0, baseMat);
-                voxel(22, 4, 22, 0, 6, 0, baseMat);
-                voxel(18, 4, 18, 0, 10, 0, baseMat);
-                voxel(14, 5, 14, 0, 14.5, 0, crystalMat);
-                voxel(10, 6, 10, 0, 19.5, 0, crystalMat);
-                voxel(6, 4, 6, 0, 24, 0, crystalMat);
+                const accentMat = new THREE.MeshStandardMaterial({ color: 0x4299e1, roughness: 0.3, metalness: 0.2 });
+                const runeMat = new THREE.MeshStandardMaterial({ color: 0xbee3f8, roughness: 0.1, metalness: 0.5, emissive: 0xbee3f8, emissiveIntensity: 0.6 });
+                voxel(28, 3, 28, 0, 1.5, 0, baseMat);
+                voxel(26, 4, 26, 0, 5, 0, baseMat);
+                voxel(22, 4, 22, 0, 9, 0, baseMat);
+                voxel(24, 2, 2, 0, 9, 11, runeMat);
+                voxel(24, 2, 2, 0, 9, -11, runeMat);
+                voxel(2, 2, 24, 11, 9, 0, runeMat);
+                voxel(2, 2, 24, -11, 9, 0, runeMat);
+                voxel(4, 6, 4, -11, 6, -11, accentMat);
+                voxel(4, 6, 4, 11, 6, -11, accentMat);
+                voxel(4, 6, 4, -11, 6, 11, accentMat);
+                voxel(4, 6, 4, 11, 6, 11, accentMat);
+                voxel(18, 4, 18, 0, 13, 0, crystalMat);
+                voxel(14, 5, 14, 0, 17.5, 0, crystalMat);
+                voxel(10, 6, 10, 0, 22.5, 0, crystalMat);
+                voxel(6, 4, 6, 0, 27, 0, crystalMat);
+                voxel(3, 3, 3, 0, 30, 0, runeMat);
+                voxel(3, 5, 2, -10, 20, 0, accentMat);
+                voxel(3, 5, 2, 10, 20, 0, accentMat);
+                voxel(2, 5, 3, 0, 20, -10, accentMat);
+                voxel(2, 5, 3, 0, 20, 10, accentMat);
+                voxel(4, 3, 4, -6, 14, 8, accentMat);
+                voxel(4, 3, 4, 6, 14, -8, accentMat);
+                voxel(12, 1, 1, 0, 13, 9.5, runeMat);
+                voxel(1, 1, 12, 9.5, 13, 0, runeMat);
+                voxel(1, 1, 12, -9.5, 13, 0, runeMat);
                 head = meshGroup.children[meshGroup.children.length - 1];
             } else if (typeKey === 'TRAP') {
                 const baseMat = new THREE.MeshStandardMaterial({ color: 0x9b2c2c, roughness: 0.7, metalness: 0.1 });
                 const spikeMat = new THREE.MeshStandardMaterial({ color: 0xe53e3e, roughness: 0.4, metalness: 0.3 });
-                voxel(28, 3, 28, 0, 1.5, 0, baseMat);
-                voxel(4, 10, 4, -8, 8, -8, spikeMat);
-                voxel(4, 10, 4, 8, 8, -8, spikeMat);
-                voxel(4, 10, 4, -8, 8, 8, spikeMat);
-                voxel(4, 10, 4, 8, 8, 8, spikeMat);
-                voxel(4, 8, 4, 0, 7, 0, spikeMat);
+                const accentMat = new THREE.MeshStandardMaterial({ color: 0xfc8181, roughness: 0.3, metalness: 0.4 });
+                const warningMat = new THREE.MeshStandardMaterial({ color: 0xffcc00, roughness: 0.3, metalness: 0.2, emissive: 0xffcc00, emissiveIntensity: 0.2 });
+                voxel(30, 2, 30, 0, 1, 0, baseMat);
+                voxel(28, 3, 28, 0, 3.5, 0, baseMat);
+                voxel(20, 1, 1, 0, 5, 14, warningMat);
+                voxel(20, 1, 1, 0, 5, -14, warningMat);
+                voxel(1, 1, 20, 14, 5, 0, warningMat);
+                voxel(1, 1, 20, -14, 5, 0, warningMat);
+                voxel(4, 12, 4, -10, 9, -10, spikeMat);
+                voxel(4, 12, 4, 10, 9, -10, spikeMat);
+                voxel(4, 12, 4, -10, 9, 10, spikeMat);
+                voxel(4, 12, 4, 10, 9, 10, spikeMat);
+                voxel(2, 3, 2, -10, 16, -10, accentMat);
+                voxel(2, 3, 2, 10, 16, -10, accentMat);
+                voxel(2, 3, 2, -10, 16, 10, accentMat);
+                voxel(2, 3, 2, 10, 16, 10, accentMat);
+                voxel(5, 14, 5, 0, 10, 0, spikeMat);
+                voxel(3, 4, 3, 0, 19, 0, accentMat);
+                voxel(1, 10, 1, 0, 10, 2.5, accentMat);
+                voxel(1, 10, 1, 0, 10, -2.5, accentMat);
+                voxel(1, 10, 1, 2.5, 10, 0, accentMat);
+                voxel(1, 10, 1, -2.5, 10, 0, accentMat);
+                voxel(3, 8, 2, -6, 7, 14, spikeMat);
+                voxel(3, 8, 2, 6, 7, 14, spikeMat);
+                voxel(3, 8, 2, -6, 7, -14, spikeMat);
+                voxel(3, 8, 2, 6, 7, -14, spikeMat);
+                voxel(4, 3, 4, 0, 5, 0, warningMat);
                 head = meshGroup.children[meshGroup.children.length - 1];
             }
             const tileCenterX = gridX * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
@@ -1433,6 +2059,7 @@
             gameState.placedTowers = true;
             updateStartButton();
             updateUI();
+            return towerData;
         }
 
         function updateStartButton() {
@@ -1465,10 +2092,10 @@
             renderer.toneMappingExposure = 1.35;
 
             // Lighting
-            const ambientLight = new THREE.AmbientLight(0xffffff, 0.4);
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.35);
             scene.add(ambientLight);
 
-            const hemiLight = new THREE.HemisphereLight(0x87CEEB, 0x556B2F, 0.35);
+            const hemiLight = new THREE.HemisphereLight(0x87CEEB, 0x556B2F, 0.3);
             scene.add(hemiLight);
 
             const dirLight = new THREE.DirectionalLight(0xfff4e0, 0.9);
@@ -1647,6 +2274,34 @@
                     const stoneEdges = new THREE.LineSegments(new THREE.EdgesGeometry(stoneGeo), edgeMat);
                     stoneEdges.position.copy(stoneBlock.position);
                     scene.add(stoneEdges);
+                    if (VISUAL_ENHANCEMENTS_ENABLED) {
+                        if (Math.random() > 0.5) {
+                            const bladeMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(grassColor).lerp(new THREE.Color(0x90EE90), 0.3).getHex(), roughness: 0.95, metalness: 0.0 });
+                            for (let b = 0; b < 4; b++) {
+                                const bladeH = 2 + Math.random() * 3;
+                                const bladeGeo = new THREE.BoxGeometry(1, bladeH, 1);
+                                const blade = new THREE.Mesh(bladeGeo, bladeMat);
+                                blade.position.set(worldX + (Math.random() - 0.5) * 20, 4 + heightVar + bladeH / 2, worldZ + (Math.random() - 0.5) * 20);
+                                blade.rotation.z = (Math.random() - 0.5) * 0.3;
+                                scene.add(blade);
+                            }
+                        }
+                        if (Math.random() > 0.6) {
+                            const pebbleGeo = new THREE.BoxGeometry(2 + Math.random() * 2, 1, 2 + Math.random() * 2);
+                            const pebbleMat = new THREE.MeshStandardMaterial({ color: stoneColors[Math.floor(Math.random() * stoneColors.length)], roughness: 0.8, metalness: 0.05 });
+                            const pebble = new THREE.Mesh(pebbleGeo, pebbleMat);
+                            pebble.position.set(worldX + (Math.random() - 0.5) * 15, 4.5 + heightVar, worldZ + (Math.random() - 0.5) * 15);
+                            pebble.rotation.y = Math.random() * Math.PI;
+                            scene.add(pebble);
+                        }
+                        if (Math.random() > 0.75) {
+                            const soilGeo = new THREE.BoxGeometry(8 + Math.random() * 6, 0.5, 8 + Math.random() * 6);
+                            const soilMat = new THREE.MeshStandardMaterial({ color: dirtColors[Math.floor(Math.random() * dirtColors.length)], roughness: 1.0, metalness: 0.0 });
+                            const soil = new THREE.Mesh(soilGeo, soilMat);
+                            soil.position.set(worldX + (Math.random() - 0.5) * 10, 4.3 + heightVar, worldZ + (Math.random() - 0.5) * 10);
+                            scene.add(soil);
+                        }
+                    }
                 }
             }
             const waterColors = [0x4FC3F7, 0x29B6F6, 0x03A9F4, 0x0288D1];
@@ -1661,41 +2316,114 @@
                 water.userData = { isWater: true, baseOpacity: 0.7, phase: Math.random() * Math.PI * 2 };
                 scene.add(water);
             }
+            if (VISUAL_ENHANCEMENTS_ENABLED) {
+                const rippleMat = new THREE.MeshStandardMaterial({ color: 0x81D4FA, roughness: 0.05, metalness: 0.5, transparent: true, opacity: 0.3 });
+                for (let i = 0; i < 8; i++) {
+                    const rippleGeo = new THREE.BoxGeometry(8 + Math.random() * 6, 0.2, 8 + Math.random() * 6);
+                    const ripple = new THREE.Mesh(rippleGeo, rippleMat);
+                    ripple.position.set(Math.random() * CONFIG.MAP_WIDTH * blockSize, 0.7, Math.random() * CONFIG.MAP_HEIGHT * blockSize);
+                    ripple.userData = { isRipple: true, phase: Math.random() * Math.PI * 2 };
+                    scene.add(ripple);
+                }
+                const lilyMat = new THREE.MeshStandardMaterial({ color: 0x228B22, roughness: 0.8, metalness: 0.0 });
+                for (let i = 0; i < 5; i++) {
+                    const lilyGeo = new THREE.BoxGeometry(4, 0.3, 4);
+                    const lily = new THREE.Mesh(lilyGeo, lilyMat);
+                    const lx = Math.random() * CONFIG.MAP_WIDTH * blockSize;
+                    const lz = Math.random() * CONFIG.MAP_HEIGHT * blockSize;
+                    lily.position.set(lx, 0.8, lz);
+                    lily.rotation.y = Math.random() * Math.PI;
+                    scene.add(lily);
+                }
+            }
             const flowerColors = [0xff6b9d, 0xffeb3b, 0xffffff, 0xe91e63, 0x9c27b0, 0xff5722, 0x00bcd4];
-            const flowerStemGeo = new THREE.BoxGeometry(1, 4, 1);
             const flowerStemMat = new THREE.MeshStandardMaterial({ color: 0x2d5a1e, roughness: 0.9, metalness: 0.0 });
+            const leafMat = new THREE.MeshStandardMaterial({ color: 0x3d7a2e, roughness: 0.85, metalness: 0.0 });
+            const pollenMat = new THREE.MeshStandardMaterial({ color: 0xffee88, roughness: 0.3, metalness: 0.2, emissive: 0xffee88, emissiveIntensity: 0.15 });
             for (let i = 0; i < 40; i++) {
                 const x = Math.floor(Math.random() * CONFIG.MAP_WIDTH);
                 const z = Math.floor(Math.random() * CONFIG.MAP_HEIGHT);
                 const fx = x * blockSize + blockSize / 2;
                 const fz = z * blockSize + blockSize / 2;
-                const stem = new THREE.Mesh(flowerStemGeo, flowerStemMat);
-                stem.position.set(fx, 6, fz);
+                const stemH = 3 + Math.random() * 4;
+                const stemGeo = new THREE.BoxGeometry(1, stemH, 1);
+                const stem = new THREE.Mesh(stemGeo, flowerStemMat);
+                stem.position.set(fx, 4 + stemH / 2, fz);
+                stem.rotation.z = (Math.random() - 0.5) * 0.2;
                 scene.add(stem);
+                if (Math.random() > 0.4) {
+                    const leafGeo = new THREE.BoxGeometry(3, 0.5, 1.5);
+                    const leaf = new THREE.Mesh(leafGeo, leafMat);
+                    leaf.position.set(fx + 2, 5 + Math.random() * 2, fz);
+                    leaf.rotation.z = 0.5;
+                    scene.add(leaf);
+                }
                 const flowerColor = flowerColors[Math.floor(Math.random() * flowerColors.length)];
-                const flowerGeo = new THREE.BoxGeometry(4, 4, 4);
-                const flowerMat = new THREE.MeshStandardMaterial({ color: flowerColor, roughness: 0.8, metalness: 0.0 });
-                const flower = new THREE.Mesh(flowerGeo, flowerMat);
-                flower.position.set(fx, 9, fz);
-                scene.add(flower);
+                const flowerMat = new THREE.MeshStandardMaterial({ color: flowerColor, roughness: 0.7, metalness: 0.0 });
+                const centerGeo = new THREE.BoxGeometry(3, 3, 3);
+                const center = new THREE.Mesh(centerGeo, pollenMat);
+                center.position.set(fx, 5 + stemH, fz);
+                scene.add(center);
+                for (let p = 0; p < 4; p++) {
+                    const petalGeo = new THREE.BoxGeometry(2.5, 2.5, 1.5);
+                    const petal = new THREE.Mesh(petalGeo, flowerMat);
+                    const angle = (p / 4) * Math.PI * 2;
+                    petal.position.set(fx + Math.cos(angle) * 3, 5 + stemH, fz + Math.sin(angle) * 3);
+                    petal.rotation.y = angle;
+                    scene.add(petal);
+                }
             }
-            const mushCapGeo = new THREE.BoxGeometry(5, 3, 5);
-            const mushStemGeo = new THREE.BoxGeometry(2, 4, 2);
+            const mushCapGeo = new THREE.BoxGeometry(6, 3, 6);
+            const mushStemGeo = new THREE.BoxGeometry(2.5, 5, 2.5);
             const mushColors = [0xff4444, 0xff8800, 0xffcc00, 0xcc44ff];
+            const spotMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.6, metalness: 0.0 });
+            const gillMat = new THREE.MeshStandardMaterial({ color: 0xffeecc, roughness: 0.8, metalness: 0.0 });
+            const sporeMat = new THREE.MeshStandardMaterial({ color: 0xaaffaa, roughness: 0.2, metalness: 0.3, emissive: 0xaaffaa, emissiveIntensity: 0.2 });
             for (let i = 0; i < 25; i++) {
                 const x = Math.floor(Math.random() * CONFIG.MAP_WIDTH);
                 const z = Math.floor(Math.random() * CONFIG.MAP_HEIGHT);
                 const mx = x * blockSize + blockSize / 2;
                 const mz = z * blockSize + blockSize / 2;
                 const mushColor = mushColors[Math.floor(Math.random() * mushColors.length)];
-                const mushCapMat = new THREE.MeshStandardMaterial({ color: mushColor, roughness: 0.7, metalness: 0.0 });
-                const mushCap = new THREE.Mesh(mushCapGeo, mushCapMat);
-                mushCap.position.set(mx, 6, mz);
-                scene.add(mushCap);
-                const stemMat = new THREE.MeshStandardMaterial({ color: 0xffeecc, roughness: 0.9, metalness: 0.0 });
-                const mushStem = new THREE.Mesh(mushStemGeo, stemMat);
-                mushStem.position.set(mx, 3, mz);
-                scene.add(mushStem);
+                const mushCapMat = new THREE.MeshStandardMaterial({ color: mushColor, roughness: 0.6, metalness: 0.0 });
+                const capScale = 0.8 + Math.random() * 0.5;
+                const cap = new THREE.Mesh(mushCapGeo, mushCapMat);
+                cap.position.set(mx, 7, mz);
+                cap.scale.setScalar(capScale);
+                scene.add(cap);
+                for (let s = 0; s < 3; s++) {
+                    const spotGeo = new THREE.BoxGeometry(1.5, 0.5, 1.5);
+                    const spot = new THREE.Mesh(spotGeo, spotMat);
+                    spot.position.set(mx + (Math.random() - 0.5) * 4, 8.5, mz + (Math.random() - 0.5) * 4);
+                    scene.add(spot);
+                }
+                for (let g = 0; g < 3; g++) {
+                    const gillGeo = new THREE.BoxGeometry(5, 0.3, 0.5);
+                    const gill = new THREE.Mesh(gillGeo, gillMat);
+                    gill.position.set(mx, 5.5, mz + (g - 1) * 1.5);
+                    scene.add(gill);
+                }
+                const stemMat = new THREE.MeshStandardMaterial({ color: 0xffeecc, roughness: 0.85, metalness: 0.0 });
+                const stem = new THREE.Mesh(mushStemGeo, stemMat);
+                stem.position.set(mx, 3.5, mz);
+                scene.add(stem);
+                const sporeGeo = new THREE.BoxGeometry(1, 1, 1);
+                const spore = new THREE.Mesh(sporeGeo, sporeMat);
+                spore.position.set(mx, 9, mz);
+                spore.userData = { isSpore: true, phase: Math.random() * Math.PI * 2 };
+                scene.add(spore);
+                if (Math.random() > 0.5) {
+                    for (let c = 0; c < 2; c++) {
+                        const smallCapGeo = new THREE.BoxGeometry(3, 2, 3);
+                        const smallCap = new THREE.Mesh(smallCapGeo, mushCapMat);
+                        smallCap.position.set(mx + (c === 0 ? -5 : 5), 4, mz + (Math.random() - 0.5) * 4);
+                        scene.add(smallCap);
+                        const smallStemGeo = new THREE.BoxGeometry(1.5, 3, 1.5);
+                        const smallStem = new THREE.Mesh(smallStemGeo, stemMat);
+                        smallStem.position.set(mx + (c === 0 ? -5 : 5), 2, mz + (Math.random() - 0.5) * 4);
+                        scene.add(smallStem);
+                    }
+                }
             }
             // Voxel pine trees
             for (let i = 0; i < 8; i++) {
@@ -1723,23 +2451,50 @@
                 createVoxelBush(bx, bz, berryColors);
             }
             const rockColors = [0x505050, 0x404040, 0x606060, 0x3a3a3a, 0x707070];
+            const mossMat = new THREE.MeshStandardMaterial({ color: 0x4a7a3a, roughness: 0.95, metalness: 0.0 });
+            const crystalInlayMat = new THREE.MeshStandardMaterial({ color: 0x88ccff, roughness: 0.2, metalness: 0.6, emissive: 0x88ccff, emissiveIntensity: 0.15 });
             for (let i = 0; i < 30; i++) {
                 const x = Math.floor(Math.random() * CONFIG.MAP_WIDTH);
                 const z = Math.floor(Math.random() * CONFIG.MAP_HEIGHT);
                 const rx = x * blockSize + blockSize / 2;
                 const rz = z * blockSize + blockSize / 2;
                 const rockColor = rockColors[Math.floor(Math.random() * rockColors.length)];
-                const rockGeo = new THREE.BoxGeometry(4 + Math.random() * 4, 3 + Math.random() * 3, 4 + Math.random() * 4);
+                const rockW = 4 + Math.random() * 5;
+                const rockH = 3 + Math.random() * 4;
+                const rockD = 4 + Math.random() * 5;
+                const rockGeo = new THREE.BoxGeometry(rockW, rockH, rockD);
                 const rockMat = new THREE.MeshStandardMaterial({ color: rockColor, roughness: 0.85, metalness: 0.05 });
                 const rock = new THREE.Mesh(rockGeo, rockMat);
-                rock.position.set(rx, 3, rz);
+                rock.position.set(rx, rockH / 2, rz);
                 rock.rotation.y = Math.random() * Math.PI;
                 rock.castShadow = true;
+                scene.add(rock);
                 const rockEdges = new THREE.LineSegments(new THREE.EdgesGeometry(rockGeo), edgeMat);
                 rockEdges.position.copy(rock.position);
                 rockEdges.rotation.copy(rock.rotation);
                 scene.add(rockEdges);
-                scene.add(rock);
+                if (Math.random() > 0.5) {
+                    const mossGeo = new THREE.BoxGeometry(rockW * 0.6, 0.5, rockD * 0.6);
+                    const moss = new THREE.Mesh(mossGeo, mossMat);
+                    moss.position.set(rx, rockH + 0.25, rz);
+                    moss.rotation.y = rock.rotation.y;
+                    scene.add(moss);
+                }
+                if (Math.random() > 0.7) {
+                    const crystalGeo = new THREE.BoxGeometry(2, 2, 1);
+                    const crystal = new THREE.Mesh(crystalGeo, crystalInlayMat);
+                    crystal.position.set(rx + (Math.random() - 0.5) * rockW * 0.5, rockH * 0.6, rz + rockD / 2 + 0.5);
+                    crystal.rotation.y = rock.rotation.y;
+                    scene.add(crystal);
+                }
+                if (Math.random() > 0.6) {
+                    const crackMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2a, roughness: 0.9, metalness: 0.0 });
+                    const crackGeo = new THREE.BoxGeometry(rockW * 0.8, 0.3, 0.5);
+                    const crack = new THREE.Mesh(crackGeo, crackMat);
+                    crack.position.set(rx, rockH * 0.5, rz + rockD / 2 + 0.25);
+                    crack.rotation.y = rock.rotation.y;
+                    scene.add(crack);
+                }
             }
             const grassTuftColors = [0x3d6b2d, 0x4a8c3a, 0x2f5c28, 0x5a8c3a];
             for (let i = 0; i < 60; i++) {
@@ -1749,10 +2504,23 @@
                 const tz = z * blockSize + blockSize / 2;
                 const tuftColor = grassTuftColors[Math.floor(Math.random() * grassTuftColors.length)];
                 const tuftMat = new THREE.MeshStandardMaterial({ color: tuftColor, roughness: 0.95, metalness: 0.0 });
-                const tuftGeo = new THREE.BoxGeometry(2, 5 + Math.random() * 4, 2);
-                const tuft = new THREE.Mesh(tuftGeo, tuftMat);
-                tuft.position.set(tx, 5, tz);
-                scene.add(tuft);
+                for (let b = 0; b < 3; b++) {
+                    const tuftH = 5 + Math.random() * 4;
+                    const tuftGeo = new THREE.BoxGeometry(1.5, tuftH, 1.5);
+                    const tuft = new THREE.Mesh(tuftGeo, tuftMat);
+                    tuft.position.set(tx + (b - 1) * 3, tuftH / 2, tz);
+                    tuft.rotation.z = (Math.random() - 0.5) * 0.4;
+                    tuft.rotation.x = (Math.random() - 0.5) * 0.2;
+                    scene.add(tuft);
+                }
+                if (Math.random() > 0.7) {
+                    const fColor = [0xff6b9d, 0xffeb3b, 0xffffff, 0xe91e63][Math.floor(Math.random() * 4)];
+                    const fMat = new THREE.MeshStandardMaterial({ color: fColor, roughness: 0.7, metalness: 0.0 });
+                    const fGeo = new THREE.BoxGeometry(2, 2, 2);
+                    const flower = new THREE.Mesh(fGeo, fMat);
+                    flower.position.set(tx, 8, tz);
+                    scene.add(flower);
+                }
             }
             const darkGrassGeo = new THREE.BoxGeometry(blockSize - 3, 4.5, blockSize - 3);
             const darkGrassMat = new THREE.MeshStandardMaterial({ color: 0x1a3d15, roughness: 0.95, metalness: 0.0 });
@@ -1834,6 +2602,28 @@
                 mesh.castShadow = true;
                 group.add(mesh);
             });
+            if (VISUAL_ENHANCEMENTS_ENABLED) {
+                const rootMat = new THREE.MeshStandardMaterial({ color: 0x5D4037, roughness: 0.95, metalness: 0.0 });
+                const branchMat = new THREE.MeshStandardMaterial({ color: 0x4a3728, roughness: 0.95, metalness: 0.0 });
+                const pineConeMat = new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.8, metalness: 0.0 });
+                const barkMat = new THREE.MeshStandardMaterial({ color: 0x3d2817, roughness: 1.0, metalness: 0.0 });
+                const rGeo = new THREE.BoxGeometry(4, 2, 2);
+                const r1 = new THREE.Mesh(rGeo, rootMat); r1.position.set(-3, 1, 3); group.add(r1);
+                const r2 = new THREE.Mesh(rGeo, rootMat); r2.position.set(3, 1, 3); group.add(r2);
+                const r3 = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 4), rootMat); r3.position.set(3, 1, -3); group.add(r3);
+                const r4 = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 4), rootMat); r4.position.set(-3, 1, -3); group.add(r4);
+                const bGeo = new THREE.BoxGeometry(4, 2, 2);
+                const b1 = new THREE.Mesh(bGeo, branchMat); b1.position.set(6, 12, 0); group.add(b1);
+                const b2 = new THREE.Mesh(bGeo, branchMat); b2.position.set(-6, 14, 0); group.add(b2);
+                const b3 = new THREE.Mesh(new THREE.BoxGeometry(2, 2, 4), branchMat); b3.position.set(0, 16, 6); group.add(b3);
+                const pcGeo = new THREE.BoxGeometry(2, 3, 2);
+                const pc1 = new THREE.Mesh(pcGeo, pineConeMat); pc1.position.set(4, 11, 2); group.add(pc1);
+                const pc2 = new THREE.Mesh(pcGeo, pineConeMat); pc2.position.set(-3, 15, -2); group.add(pc2);
+                const barkGeo = new THREE.BoxGeometry(1, 2, 1);
+                const bk1 = new THREE.Mesh(barkGeo, barkMat); bk1.position.set(1.5, 3, 1.5); group.add(bk1);
+                const bk2 = new THREE.Mesh(barkGeo, barkMat); bk2.position.set(-1.5, 5, -1.5); group.add(bk2);
+                const bk3 = new THREE.Mesh(barkGeo, barkMat); bk3.position.set(1.5, 7, 0); group.add(bk3);
+            }
             group.position.set(x, 0, z);
             group.scale.setScalar(0.85 + Math.random() * 0.3);
             scene.add(group);
@@ -1880,6 +2670,43 @@
                 berry.position.set((Math.random() - 0.5) * 8, 16 + Math.random() * 4, (Math.random() - 0.5) * 8);
                 group.add(berry);
             }
+            if (VISUAL_ENHANCEMENTS_ENABLED) {
+                const rootMat = new THREE.MeshStandardMaterial({ color: 0x5D4037, roughness: 0.95, metalness: 0.0 });
+                const branchMat = new THREE.MeshStandardMaterial({ color: 0x5D4037, roughness: 0.9, metalness: 0.0 });
+                const acornMat = new THREE.MeshStandardMaterial({ color: 0x8B4513, roughness: 0.7, metalness: 0.0 });
+                const rGeo = new THREE.BoxGeometry(5, 3, 3);
+                const r1 = new THREE.Mesh(rGeo, rootMat); r1.position.set(-4, 1, 4); group.add(r1);
+                const r2 = new THREE.Mesh(rGeo, rootMat); r2.position.set(4, 1, 4); group.add(r2);
+                const r3 = new THREE.Mesh(new THREE.BoxGeometry(3, 3, 5), rootMat); r3.position.set(4, 1, -4); group.add(r3);
+                const r4 = new THREE.Mesh(new THREE.BoxGeometry(3, 3, 5), rootMat); r4.position.set(-4, 1, -4); group.add(r4);
+                const r5 = new THREE.Mesh(new THREE.BoxGeometry(3, 2, 3), rootMat); r5.position.set(-5, 1, 0); group.add(r5);
+                const r6 = new THREE.Mesh(new THREE.BoxGeometry(3, 2, 3), rootMat); r6.position.set(5, 1, 0); group.add(r6);
+                const bGeo = new THREE.BoxGeometry(6, 3, 3);
+                const b1 = new THREE.Mesh(bGeo, branchMat); b1.position.set(7, 14, 0); group.add(b1);
+                const b2 = new THREE.Mesh(bGeo, branchMat); b2.position.set(-7, 15, 0); group.add(b2);
+                const b3 = new THREE.Mesh(new THREE.BoxGeometry(3, 3, 6), branchMat); b3.position.set(0, 16, 7); group.add(b3);
+                const b4 = new THREE.Mesh(new THREE.BoxGeometry(3, 3, 6), branchMat); b4.position.set(0, 13, -7); group.add(b4);
+                const aGeo = new THREE.BoxGeometry(1.5, 2, 1.5);
+                for (let a = 0; a < 4; a++) {
+                    const acorn = new THREE.Mesh(aGeo, acornMat);
+                    acorn.position.set((Math.random() - 0.5) * 10, 14 + Math.random() * 6, (Math.random() - 0.5) * 10);
+                    group.add(acorn);
+                }
+                if (Math.random() > 0.7) {
+                    const nestMat = new THREE.MeshStandardMaterial({ color: 0x8B7355, roughness: 0.9, metalness: 0.0 });
+                    const nestGeo = new THREE.BoxGeometry(4, 2, 4);
+                    const nest = new THREE.Mesh(nestGeo, nestMat);
+                    nest.position.set(3, 18, 2);
+                    group.add(nest);
+                    const eggMat = new THREE.MeshStandardMaterial({ color: 0xfff8dc, roughness: 0.5, metalness: 0.0 });
+                    const eggGeo = new THREE.BoxGeometry(1.2, 1.5, 1.2);
+                    for (let e = 0; e < 2; e++) {
+                        const egg = new THREE.Mesh(eggGeo, eggMat);
+                        egg.position.set(3 + (e - 0.5) * 1.5, 19.5, 2);
+                        group.add(egg);
+                    }
+                }
+            }
             group.position.set(x, 0, z);
             group.scale.setScalar(0.85 + Math.random() * 0.3);
             scene.add(group);
@@ -1888,29 +2715,76 @@
         function createVoxelBush(x, z, berryColors) {
             const bushMat = new THREE.MeshStandardMaterial({ color: 0x2E7D32, roughness: 0.9, metalness: 0.0 });
             const lightGreenMat = new THREE.MeshStandardMaterial({ color: 0x4CAF50, roughness: 0.88, metalness: 0.0 });
+            const darkGreenMat = new THREE.MeshStandardMaterial({ color: 0x1B5E20, roughness: 0.9, metalness: 0.0 });
+            const thornMat = new THREE.MeshStandardMaterial({ color: 0x5D4037, roughness: 0.6, metalness: 0.1 });
             const group = new THREE.Group();
-            const bushVoxels = [
-                { ox: 0, oy: 3, oz: 0, sx: 8, sy: 3, sz: 6 },
-                { ox: 0, oy: 5, oz: 0, sx: 7, sy: 3, sz: 5 },
-                { ox: 2, oy: 4, oz: 0, sx: 4, sy: 3, sz: 4 },
-                { ox: -2, oy: 4, oz: 0, sx: 4, sy: 3, sz: 4 },
-                { ox: 0, oy: 4, oz: 2, sx: 5, sy: 3, sz: 3 },
-                { ox: 0, oy: 4, oz: -2, sx: 5, sy: 3, sz: 3 },
-            ];
-            bushVoxels.forEach((v, i) => {
-                const mat = i % 2 === 0 ? bushMat : lightGreenMat;
-                const geo = new THREE.BoxGeometry(v.sx, v.sy, v.sz);
-                const mesh = new THREE.Mesh(geo, mat);
-                mesh.position.set(v.ox, v.oy, v.oz);
-                mesh.castShadow = true;
-                group.add(mesh);
-            });
+            const shapeType = Math.floor(Math.random() * 3);
+            if (shapeType === 0) {
+                const bushVoxels = [
+                    { ox: 0, oy: 3, oz: 0, sx: 8, sy: 3, sz: 6, mat: bushMat },
+                    { ox: 0, oy: 5, oz: 0, sx: 7, sy: 3, sz: 5, mat: lightGreenMat },
+                    { ox: 2, oy: 4, oz: 0, sx: 4, sy: 3, sz: 4, mat: darkGreenMat },
+                    { ox: -2, oy: 4, oz: 0, sx: 4, sy: 3, sz: 4, mat: darkGreenMat },
+                    { ox: 0, oy: 4, oz: 2, sx: 5, sy: 3, sz: 3, mat: lightGreenMat },
+                    { ox: 0, oy: 4, oz: -2, sx: 5, sy: 3, sz: 3, mat: bushMat },
+                ];
+                bushVoxels.forEach(v => {
+                    const geo = new THREE.BoxGeometry(v.sx, v.sy, v.sz);
+                    const mesh = new THREE.Mesh(geo, v.mat);
+                    mesh.position.set(v.ox, v.oy, v.oz);
+                    mesh.castShadow = true;
+                    group.add(mesh);
+                });
+            } else if (shapeType === 1) {
+                const bushVoxels = [
+                    { ox: 0, oy: 2, oz: 0, sx: 6, sy: 4, sz: 6, mat: bushMat },
+                    { ox: 0, oy: 5, oz: 0, sx: 5, sy: 3, sz: 5, mat: lightGreenMat },
+                    { ox: 3, oy: 3, oz: 0, sx: 3, sy: 2, sz: 3, mat: darkGreenMat },
+                    { ox: -3, oy: 3, oz: 0, sx: 3, sy: 2, sz: 3, mat: darkGreenMat },
+                ];
+                bushVoxels.forEach(v => {
+                    const geo = new THREE.BoxGeometry(v.sx, v.sy, v.sz);
+                    const mesh = new THREE.Mesh(geo, v.mat);
+                    mesh.position.set(v.ox, v.oy, v.oz);
+                    mesh.castShadow = true;
+                    group.add(mesh);
+                });
+            } else {
+                const bushVoxels = [
+                    { ox: 0, oy: 3, oz: 0, sx: 7, sy: 3, sz: 7, mat: lightGreenMat },
+                    { ox: 0, oy: 6, oz: 0, sx: 5, sy: 3, sz: 5, mat: bushMat },
+                    { ox: 0, oy: 8, oz: 0, sx: 3, sy: 2, sz: 3, mat: darkGreenMat },
+                ];
+                bushVoxels.forEach(v => {
+                    const geo = new THREE.BoxGeometry(v.sx, v.sy, v.sz);
+                    const mesh = new THREE.Mesh(geo, v.mat);
+                    mesh.position.set(v.ox, v.oy, v.oz);
+                    mesh.castShadow = true;
+                    group.add(mesh);
+                });
+            }
+            if (VISUAL_ENHANCEMENTS_ENABLED && Math.random() > 0.5) {
+                for (let t = 0; t < 4; t++) {
+                    const thornGeo = new THREE.BoxGeometry(0.5, 1.5, 0.5);
+                    const thorn = new THREE.Mesh(thornGeo, thornMat);
+                    thorn.position.set((Math.random() - 0.5) * 8, 3 + Math.random() * 4, (Math.random() - 0.5) * 6);
+                    group.add(thorn);
+                }
+            }
             const berryGeo = new THREE.BoxGeometry(2, 2, 2);
             for (let j = 0; j < 3; j++) {
                 const berryMat = new THREE.MeshStandardMaterial({ color: berryColors[Math.floor(Math.random() * berryColors.length)], roughness: 0.5, metalness: 0.0 });
                 const berry = new THREE.Mesh(berryGeo, berryMat);
                 berry.position.set((Math.random() - 0.5) * 6, 4 + j * 0.5, (Math.random() - 0.5) * 4);
                 group.add(berry);
+            }
+            if (VISUAL_ENHANCEMENTS_ENABLED && Math.random() > 0.6) {
+                const flowerColors = [0xff6b9d, 0xffeb3b, 0xffffff];
+                const fMat = new THREE.MeshStandardMaterial({ color: flowerColors[Math.floor(Math.random() * flowerColors.length)], roughness: 0.7, metalness: 0.0 });
+                const fGeo = new THREE.BoxGeometry(1.5, 1.5, 1.5);
+                const flower = new THREE.Mesh(fGeo, fMat);
+                flower.position.set((Math.random() - 0.5) * 4, 6, (Math.random() - 0.5) * 4);
+                group.add(flower);
             }
             group.position.set(x, 0, z);
             group.scale.setScalar(0.7 + Math.random() * 0.6);
@@ -2148,7 +3022,9 @@
         function drawPath(path) {
             if (!path || !Array.isArray(path)) return;
             const edgeMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.35 });
-            const pathColors = [0x3d2b1f, 0x2e1f0f, 0x4a3728, 0x3b2a1a, 0x2c1a0a];
+            const pathColors = [0xd4b896, 0xc9a87c, 0xdeb887, 0xcdb38b, 0xbca373];
+            const stoneColors = [0x696969, 0x787878, 0x505050, 0x5a5a5a, 0x4a4a4a];
+            const dirtColors = [0x654321, 0x8B4513, 0x7a3b10, 0x5c3317];
             path.forEach((p, i) => {
                 setTimeout(() => {
                     if (!p || p.x === undefined) return;
@@ -2175,7 +3051,7 @@
                 const z = p.y * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
                 const pathColor = pathColors[Math.floor(Math.random() * pathColors.length)];
                 const pathGeo = new THREE.BoxGeometry(CONFIG.TILE_SIZE - 3, 1.5, CONFIG.TILE_SIZE - 3);
-                const pathMat = new THREE.MeshStandardMaterial({ color: pathColor, roughness: 0.9, metalness: 0.0, emissive: 0x5a3a1a, emissiveIntensity: 0.5 });
+                const pathMat = new THREE.MeshStandardMaterial({ color: pathColor, roughness: 0.4, metalness: 0.0 });
                 const pathTile = new THREE.Mesh(pathGeo, pathMat);
                 pathTile.position.set(x, 7.5, z);
                 pathTile.receiveShadow = true;
@@ -2184,6 +3060,57 @@
                 const pathEdges = new THREE.LineSegments(new THREE.EdgesGeometry(pathGeo), edgeMat);
                 pathEdges.position.copy(pathTile.position);
                 scene.add(pathEdges);
+                const curbMat = new THREE.MeshStandardMaterial({ color: 0x8b7355, roughness: 0.6, metalness: 0.0 });
+                const curbH = 1.2;
+                const curbY = 7.5 + curbH / 2;
+                const curbGeoLong = new THREE.BoxGeometry(CONFIG.TILE_SIZE - 2, curbH, 1);
+                const curb1 = new THREE.Mesh(curbGeoLong, curbMat);
+                curb1.position.set(x, curbY, z - (CONFIG.TILE_SIZE - 2) / 2);
+                scene.add(curb1);
+                const curb2 = new THREE.Mesh(curbGeoLong, curbMat);
+                curb2.position.set(x, curbY, z + (CONFIG.TILE_SIZE - 2) / 2);
+                scene.add(curb2);
+                const curbGeoShort = new THREE.BoxGeometry(1, curbH, CONFIG.TILE_SIZE - 2);
+                const curb3 = new THREE.Mesh(curbGeoShort, curbMat);
+                curb3.position.set(x - (CONFIG.TILE_SIZE - 2) / 2, curbY, z);
+                scene.add(curb3);
+                const curb4 = new THREE.Mesh(curbGeoShort, curbMat);
+                curb4.position.set(x + (CONFIG.TILE_SIZE - 2) / 2, curbY, z);
+                scene.add(curb4);
+                if (VISUAL_ENHANCEMENTS_ENABLED) {
+                    if (Math.random() > 0.6) {
+                        const edgeStoneGeo = new THREE.BoxGeometry(3 + Math.random() * 3, 2, 3 + Math.random() * 3);
+                        const edgeStoneMat = new THREE.MeshStandardMaterial({ color: stoneColors[Math.floor(Math.random() * stoneColors.length)], roughness: 0.85, metalness: 0.05 });
+                        const edgeStone = new THREE.Mesh(edgeStoneGeo, edgeStoneMat);
+                        const side = Math.random() > 0.5 ? 1 : -1;
+                        edgeStone.position.set(x + side * (CONFIG.TILE_SIZE / 2 - 2), 7, z + (Math.random() - 0.5) * 20);
+                        edgeStone.rotation.y = Math.random() * Math.PI;
+                        scene.add(edgeStone);
+                    }
+                    if (Math.random() > 0.5) {
+                        const rutGeo = new THREE.BoxGeometry(2, 0.5, 15);
+                        const rutMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(pathColor).multiplyScalar(0.7).getHex(), roughness: 1.0, metalness: 0.0 });
+                        const rut = new THREE.Mesh(rutGeo, rutMat);
+                        rut.position.set(x + (Math.random() - 0.5) * 10, 8.3, z);
+                        scene.add(rut);
+                    }
+                    if (Math.random() > 0.7) {
+                        const debrisGeo = new THREE.BoxGeometry(2 + Math.random() * 2, 1, 2 + Math.random() * 2);
+                        const debrisMat = new THREE.MeshStandardMaterial({ color: dirtColors[Math.floor(Math.random() * dirtColors.length)], roughness: 0.95, metalness: 0.0 });
+                        const debris = new THREE.Mesh(debrisGeo, debrisMat);
+                        debris.position.set(x + (Math.random() - 0.5) * 20, 8.3, z + (Math.random() - 0.5) * 20);
+                        debris.rotation.y = Math.random() * Math.PI;
+                        scene.add(debris);
+                    }
+                    if (Math.random() > 0.85) {
+                        const puddleGeo = new THREE.BoxGeometry(10 + Math.random() * 8, 0.3, 8 + Math.random() * 6);
+                        const puddleMat = new THREE.MeshStandardMaterial({ color: 0x4FC3F7, roughness: 0.1, metalness: 0.4, transparent: true, opacity: 0.6 });
+                        const puddle = new THREE.Mesh(puddleGeo, puddleMat);
+                        puddle.position.set(x + (Math.random() - 0.5) * 10, 8.4, z + (Math.random() - 0.5) * 10);
+                        puddle.userData = { isPuddle: true, phase: Math.random() * Math.PI * 2 };
+                        scene.add(puddle);
+                    }
+                }
                 if (i % 3 === 0 && i < path.length - 1) {
                     const nextP = path[i + 1];
                     const dx = nextP.x - p.x;
@@ -2219,20 +3146,32 @@
         }
 
         function generateNewPath() {
-            const path = selectPathForWave(gameState.wave);
-            currentPath = path;
+            const paths = selectPathForWave(gameState.wave);
+            const isMultiPath = Array.isArray(paths);
+            const pathArray = isMultiPath ? paths : [paths];
+            currentPath = pathArray[0] || [];
+            
+            // Initialize pathGrid with null (no path ID)
             gameState.pathGrid = [];
             for (let x = 0; x < CONFIG.MAP_WIDTH; x++) {
                 gameState.pathGrid[x] = [];
                 for (let y = 0; y < CONFIG.MAP_HEIGHT; y++) {
-                    gameState.pathGrid[x][y] = false;
+                    gameState.pathGrid[x][y] = null;
                 }
             }
-            path.forEach(p => {
-                if (p.x >= 0 && p.x < CONFIG.MAP_WIDTH && p.y >= 0 && p.y < CONFIG.MAP_HEIGHT) {
-                    gameState.pathGrid[p.x][p.y] = true;
-                }
+            
+            // Mark each path's cells with its path index
+            pathArray.forEach((path, pathIndex) => {
+                path.forEach(p => {
+                    if (p.x >= 0 && p.x < CONFIG.MAP_WIDTH && p.y >= 0 && p.y < CONFIG.MAP_HEIGHT) {
+                        gameState.pathGrid[p.x][p.y] = pathIndex;
+                    }
+                });
             });
+            
+            // Store path count for later use
+            gameState.activePathCount = pathArray.length;
+            
             destroyOverlappingTurrets();
         }
 
@@ -2293,6 +3232,7 @@
             waveStartTime = Date.now();
             document.getElementById('start-wave-btn').style.display = 'none';
             showWaveAnnouncement(gameState.wave);
+            showWaveIncoming(gameState.wave);
             updateUI();
             console.log('Wave started:', gameState.wave, 'enemies:', waveEnemies.length);
         }
@@ -2355,6 +3295,19 @@
                     eye(3, 3, 1, -3, 10, 4);
                     eye(3, 3, 1, 3, 10, 4);
                     voxel(4, 1.5, 1, 0, 7, 4, mouthMat);
+                    if (VISUAL_ENHANCEMENTS_ENABLED) {
+                        voxel(2, 6, 2, -6, 8, 0, darkMat);
+                        voxel(2, 6, 2, 6, 8, 0, darkMat);
+                        voxel(2, 2, 2, -6, 4, 0, lightMat);
+                        voxel(2, 2, 2, 6, 4, 0, lightMat);
+                        voxel(3, 2, 4, -3, 0, 2, darkMat);
+                        voxel(3, 2, 4, 3, 0, 2, darkMat);
+                        voxel(2, 2, 2, 0, 8, 5, lightMat);
+                        voxel(4, 2, 3, -7, 11, 0, lightMat);
+                        voxel(4, 2, 3, 7, 11, 0, lightMat);
+                        voxel(6, 3, 1, 0, 7, 4.5, lightMat);
+                        voxel(2, 2, 4, 0, 4, -5, darkMat);
+                    }
                     break;
                 case 'fast':
                     voxel(6, 3, 6, 0, 2, 0);
@@ -2367,6 +3320,26 @@
                     voxel(3, 2, 1, 0, 6, 3, mouthMat);
                     voxel(1, 1, 1, -1, 6.5, 3.5, toothMat);
                     voxel(1, 1, 1, 1, 6.5, 3.5, toothMat);
+                    if (VISUAL_ENHANCEMENTS_ENABLED) {
+                        // Ear fins (swept back)
+                        voxel(1, 2, 3, -3, 10, -2, darkMat);
+                        voxel(1, 2, 3, 3, 10, -2, darkMat);
+                        // Claws
+                        voxel(1, 1, 2, -3, 4, 3, lightMat);
+                        voxel(1, 1, 2, -1, 4, 3, lightMat);
+                        voxel(1, 1, 2, 1, 4, 3, lightMat);
+                        voxel(1, 1, 2, 3, 4, 3, lightMat);
+                        // Back spikes
+                        voxel(1, 3, 1, 0, 10, -3, lightMat);
+                        voxel(1, 2, 1, -2, 8, -3, lightMat);
+                        voxel(1, 2, 1, 2, 8, -3, lightMat);
+                        // Streamlined feet
+                        voxel(2, 1, 3, -2, 0, 1, darkMat);
+                        voxel(2, 1, 3, 2, 0, 1, darkMat);
+                        // Visor band
+                        const visorMat = new THREE.MeshStandardMaterial({ color: 0x222222, roughness: 0.2, metalness: 0.6, emissive: 0xffaa00, emissiveIntensity: 0.15 });
+                        voxel(6, 1.5, 1, 0, 9, 3.5, visorMat);
+                    }
                     break;
                 case 'tank':
                     voxel(14, 5, 12, 0, 2.5, 0);
@@ -2382,6 +3355,34 @@
                     voxel(1.5, 1, 1, -2, 9.5, 6.5, toothMat);
                     voxel(1.5, 1, 1, 2, 9.5, 6.5, toothMat);
                     voxel(6, 3, 2, 0, 18, 7, lightMat);
+                    if (VISUAL_ENHANCEMENTS_ENABLED) {
+                        // Heavy shoulder armor
+                        voxel(6, 4, 5, -10, 14, 0, lightMat);
+                        voxel(6, 4, 5, 10, 14, 0, lightMat);
+                        // Shoulder spikes
+                        voxel(2, 4, 2, -11, 17, 0, lightMat);
+                        voxel(2, 4, 2, 11, 17, 0, lightMat);
+                        // Armored legs
+                        voxel(5, 6, 5, -5, 2, 3, darkMat);
+                        voxel(5, 6, 5, 5, 2, 3, darkMat);
+                        // Heavy boots
+                        voxel(6, 3, 6, -5, 0, 3, lightMat);
+                        voxel(6, 3, 6, 5, 0, 3, lightMat);
+                        // Chest emblem
+                        const emblemMat = new THREE.MeshStandardMaterial({ color: 0xff4444, roughness: 0.3, metalness: 0.5, emissive: 0xff4444, emissiveIntensity: 0.2 });
+                        voxel(4, 4, 1, 0, 10, 7.5, emblemMat);
+                        // Head horns
+                        voxel(3, 5, 3, -5, 23, 0, darkMat);
+                        voxel(3, 5, 3, 5, 23, 0, darkMat);
+                        voxel(2, 3, 2, -5, 26, 0, lightMat);
+                        voxel(2, 3, 2, 5, 26, 0, lightMat);
+                        // Side shields
+                        voxel(3, 10, 8, -9, 10, 3, lightMat);
+                        voxel(3, 10, 8, 9, 10, 3, lightMat);
+                        // Belt buckle
+                        const buckleMat = new THREE.MeshStandardMaterial({ color: 0xffd700, roughness: 0.2, metalness: 0.8 });
+                        voxel(4, 3, 1, 0, 5, 7.5, buckleMat);
+                    }
                     break;
                 case 'sniper':
                     voxel(6, 3, 6, 0, 1.5, 0);
@@ -2394,6 +3395,30 @@
                     eye(1.5, 2.5, 1, 2, 14, 3, 0.4);
                     voxel(2, 1, 1, 0, 11, 3, mouthMat);
                     voxel(2, 2, 8, 0, 19, 0, darkMat);
+                    if (VISUAL_ENHANCEMENTS_ENABLED) {
+                        // Long arms
+                        voxel(2, 8, 2, -5, 10, 0, darkMat);
+                        voxel(2, 8, 2, 5, 10, 0, darkMat);
+                        // Hands
+                        voxel(2, 2, 2, -5, 5, 0, lightMat);
+                        voxel(2, 2, 2, 5, 5, 0, lightMat);
+                        // Hat/hood brim
+                        voxel(8, 1, 6, 0, 21, 1, darkMat);
+                        // Hat top
+                        voxel(6, 3, 4, 0, 22.5, 0, darkMat);
+                        // Cloak back piece
+                        const cloakMat = new THREE.MeshStandardMaterial({ color: new THREE.Color(color).multiplyScalar(0.65).getHex(), roughness: 0.8, metalness: 0.0 });
+                        voxel(8, 10, 2, 0, 12, -4, cloakMat);
+                        voxel(6, 8, 2, 0, 8, -5, cloakMat);
+                        // Boots
+                        voxel(3, 3, 4, -2, 0, 1, darkMat);
+                        voxel(3, 3, 4, 2, 0, 1, darkMat);
+                        // Scope lens (glowing red)
+                        const scopeLensMat = new THREE.MeshStandardMaterial({ color: 0xff0000, roughness: 0.1, metalness: 0.8, emissive: 0xff0000, emissiveIntensity: 0.6 });
+                        voxel(2, 2, 1, 0, 19, 4.5, scopeLensMat);
+                        // Scope ring detail
+                        voxel(3, 3, 1, 0, 19, 5, darkMat);
+                    }
                     break;
                 case 'burrowing':
                     voxel(12, 4, 10, 0, 2, 0);
@@ -2407,6 +3432,30 @@
                     voxel(1, 1, 1, 1.5, 7.5, 4.5, toothMat);
                     voxel(4, 3, 2, -4, 6, 6, darkMat);
                     voxel(4, 3, 2, 4, 6, 6, darkMat);
+                    if (VISUAL_ENHANCEMENTS_ENABLED) {
+                        // Drill front
+                        const drillMat = new THREE.MeshStandardMaterial({ color: 0xaaaaaa, roughness: 0.3, metalness: 0.7 });
+                        voxel(4, 4, 2, 0, 7, 6, drillMat);
+                        voxel(3, 3, 2, 0, 7, 8, drillMat);
+                        voxel(2, 2, 2, 0, 7, 10, drillMat);
+                        // Large digging claws
+                        voxel(3, 4, 2, -6, 5, 6, lightMat);
+                        voxel(3, 4, 2, 6, 5, 6, lightMat);
+                        voxel(2, 3, 2, -7, 5, 8, lightMat);
+                        voxel(2, 3, 2, 7, 5, 8, lightMat);
+                        // Armored back plates
+                        voxel(10, 2, 2, 0, 14, -5, darkMat);
+                        voxel(8, 2, 2, 0, 12, -6, darkMat);
+                        // Small eyes (underground adapted)
+                        voxel(2, 1.5, 1, -3, 10, 4.5, eyePupilMat);
+                        voxel(2, 1.5, 1, 3, 10, 4.5, eyePupilMat);
+                        // Tail fin
+                        voxel(6, 4, 2, 0, 6, -6, darkMat);
+                        voxel(4, 6, 1, 0, 6, -7, lightMat);
+                        // Side armor ridges
+                        voxel(2, 8, 1, -7, 8, 0, lightMat);
+                        voxel(2, 8, 1, 7, 8, 0, lightMat);
+                    }
                     break;
                 case 'spawner':
                     voxel(8, 4, 8, 0, 2, 0);
@@ -2420,6 +3469,40 @@
                     voxel(5, 2, 1, 0, 9, 4, mouthMat);
                     voxel(4, 3, 4, -3, 2, 0, darkMat);
                     voxel(4, 3, 4, 3, 2, 0, darkMat);
+                    if (VISUAL_ENHANCEMENTS_ENABLED) {
+                        // Spawning tube on top
+                        const tubeMat = new THREE.MeshStandardMaterial({ color: 0x9933ff, roughness: 0.3, metalness: 0.2, emissive: 0x6600cc, emissiveIntensity: 0.3 });
+                        voxel(4, 6, 4, 0, 23, 0, tubeMat);
+                        voxel(5, 2, 5, 0, 27, 0, tubeMat);
+                        // Glowing portal ring
+                        const portalMat = new THREE.MeshStandardMaterial({ color: 0xcc66ff, roughness: 0.1, metalness: 0.5, emissive: 0xcc66ff, emissiveIntensity: 0.5 });
+                        voxel(6, 1, 1, 0, 28, 2.5, portalMat);
+                        voxel(6, 1, 1, 0, 28, -2.5, portalMat);
+                        voxel(1, 1, 6, 2.5, 28, 0, portalMat);
+                        voxel(1, 1, 6, -2.5, 28, 0, portalMat);
+                        // Detailed side pods with openings
+                        voxel(5, 4, 5, -4, 3, 3, darkMat);
+                        voxel(5, 4, 5, 4, 3, 3, darkMat);
+                        // Pod openings (glowing)
+                        voxel(3, 3, 1, -4, 3, 5.5, portalMat);
+                        voxel(3, 3, 1, 4, 3, 5.5, portalMat);
+                        // Birthing sac underneath
+                        const sacMat = new THREE.MeshStandardMaterial({ color: 0x8844aa, roughness: 0.6, metalness: 0.0, transparent: true, opacity: 0.7 });
+                        voxel(6, 3, 4, 0, -1, 2, sacMat);
+                        // Ritual markings (glowing lines on body)
+                        voxel(8, 1, 1, 0, 12, 5.5, portalMat);
+                        voxel(1, 1, 8, 5.5, 12, 0, portalMat);
+                        voxel(1, 1, 8, -5.5, 12, 0, portalMat);
+                        // Tentacle appendages
+                        voxel(2, 6, 2, -6, 6, -3, darkMat);
+                        voxel(2, 4, 2, -7, 3, -5, darkMat);
+                        voxel(2, 6, 2, 6, 6, -3, darkMat);
+                        voxel(2, 4, 2, 7, 3, -5, darkMat);
+                        // Crown-like growth
+                        voxel(3, 2, 3, -3, 21, -2, lightMat);
+                        voxel(3, 2, 3, 3, 21, -2, lightMat);
+                        voxel(3, 3, 3, 0, 22, -3, lightMat);
+                    }
                     break;
                 case 'boss':
                     voxel(14, 5, 12, 0, 2.5, 0);
@@ -2444,6 +3527,291 @@
                     voxel(6, 3, 2, 0, 27, 7, lightMat);
                     voxel(3, 3, 3, -5, 28, 0, darkMat);
                     voxel(3, 3, 3, 5, 28, 0, darkMat);
+                    if (VISUAL_ENHANCEMENTS_ENABLED) {
+                        // Massive shoulder pauldrons
+                        const pauldronMat = new THREE.MeshStandardMaterial({ color: 0x660000, roughness: 0.4, metalness: 0.6 });
+                        voxel(8, 6, 6, -11, 20, 0, pauldronMat);
+                        voxel(8, 6, 6, 11, 20, 0, pauldronMat);
+                        // Pauldron spikes
+                        voxel(2, 5, 2, -13, 24, 0, lightMat);
+                        voxel(2, 5, 2, -9, 24, 0, lightMat);
+                        voxel(2, 5, 2, 9, 24, 0, lightMat);
+                        voxel(2, 5, 2, 13, 24, 0, lightMat);
+                        // Armored gauntlets
+                        voxel(5, 6, 5, -9, 10, 3, pauldronMat);
+                        voxel(5, 6, 5, 9, 10, 3, pauldronMat);
+                        // Gauntlet spikes
+                        voxel(2, 3, 2, -10, 14, 4, lightMat);
+                        voxel(2, 3, 2, 10, 14, 4, lightMat);
+                        // Throne-like back structure
+                        const throneMat = new THREE.MeshStandardMaterial({ color: 0x440000, roughness: 0.5, metalness: 0.4 });
+                        voxel(12, 16, 3, 0, 18, -7, throneMat);
+                        // Throne back spikes
+                        voxel(2, 4, 2, -5, 27, -7, lightMat);
+                        voxel(2, 4, 2, 0, 28, -7, lightMat);
+                        voxel(2, 4, 2, 5, 27, -7, lightMat);
+                        // Glowing chest core (weak point)
+                        const coreMat = new THREE.MeshStandardMaterial({ color: 0xff0000, roughness: 0.1, metalness: 0.8, emissive: 0xff0000, emissiveIntensity: 0.7 });
+                        voxel(6, 6, 2, 0, 14, 7.5, coreMat);
+                        // Core ring
+                        voxel(7, 1, 1, 0, 17, 8, lightMat);
+                        voxel(7, 1, 1, 0, 11, 8, lightMat);
+                        voxel(1, 7, 1, 3.5, 14, 8, lightMat);
+                        voxel(1, 7, 1, -3.5, 14, 8, lightMat);
+                        // Leg armor plates
+                        voxel(6, 8, 6, -5, 4, 3, pauldronMat);
+                        voxel(6, 8, 6, 5, 4, 3, pauldronMat);
+                        // Knee spikes
+                        voxel(2, 3, 2, -5, 8, 5, lightMat);
+                        voxel(2, 3, 2, 5, 8, 5, lightMat);
+                        // Ground-stomp feet
+                        voxel(8, 4, 8, -5, 0, 3, darkMat);
+                        voxel(8, 4, 8, 5, 0, 3, darkMat);
+                        // Foot spikes
+                        voxel(2, 2, 2, -7, 1, 5, lightMat);
+                        voxel(2, 2, 2, -3, 1, 5, lightMat);
+                        voxel(2, 2, 2, 3, 1, 5, lightMat);
+                        voxel(2, 2, 2, 7, 1, 5, lightMat);
+                        // Cape-like back piece
+                        const capeMat = new THREE.MeshStandardMaterial({ color: 0x330000, roughness: 0.8, metalness: 0.1 });
+                        voxel(14, 12, 2, 0, 14, -5, capeMat);
+                        voxel(12, 10, 2, 0, 10, -6, capeMat);
+                        voxel(10, 8, 2, 0, 6, -7, capeMat);
+                        // Cape tattered bottom
+                        voxel(3, 4, 2, -5, 2, -7, capeMat);
+                        voxel(3, 5, 2, 0, 1, -7, capeMat);
+                        voxel(3, 3, 2, 5, 3, -7, capeMat);
+                        // Crown jewel details
+                        const crownJewelMat = new THREE.MeshStandardMaterial({ color: 0xff0000, roughness: 0.1, metalness: 0.9, emissive: 0xff0000, emissiveIntensity: 0.8 });
+                        voxel(3, 3, 3, 0, 32, 0, crownJewelMat);
+                        voxel(2, 2, 2, -4, 30, 0, crownJewelMat);
+                        voxel(2, 2, 2, 4, 30, 0, crownJewelMat);
+                        // Arm bands
+                        const armBandMat = new THREE.MeshStandardMaterial({ color: 0xffd700, roughness: 0.2, metalness: 0.8 });
+                        voxel(4, 2, 4, -8, 14, 0, armBandMat);
+                        voxel(4, 2, 4, 8, 14, 0, armBandMat);
+                        // Waist armor
+                        voxel(12, 4, 5, 0, 6, 2, pauldronMat);
+                        // Waist belt buckle
+                        voxel(4, 3, 1, 0, 6, 5, armBandMat);
+                    }
+                    break;
+                case 'stealth':
+                    voxel(8, 3, 6, 0, 1.5, 0);
+                    voxel(9, 3, 7, 0, 4.5, 0);
+                    voxel(7, 3, 5, 0, 7.5, 0);
+                    voxel(5, 2, 4, 0, 10, 0, lightMat);
+                    eye(2.5, 2, 1, -2, 7, 3, 0.5);
+                    eye(2.5, 2, 1, 2, 7, 3, 0.5);
+                    voxel(3, 1, 1, 0, 5, 3, mouthMat);
+                    if (VISUAL_ENHANCEMENTS_ENABLED) {
+                        voxel(6, 2, 5, 0, 10.5, 0, darkMat);
+                        voxel(7, 1, 6, 0, 11.5, 1, darkMat);
+                        voxel(2, 5, 1, 0, 6, -4, darkMat);
+                        voxel(2, 3, 1, 0, 3, -5, darkMat);
+                        voxel(1, 4, 1, -2, 6, -3, lightMat);
+                        voxel(1, 4, 1, 2, 6, -3, lightMat);
+                        voxel(2, 1, 2, -3, 0, 2, darkMat);
+                        voxel(2, 1, 2, 3, 0, 2, darkMat);
+                        voxel(5, 1.5, 1, 0, 7, 3, darkMat);
+                    }
+                    break;
+                case 'shielded':
+                    voxel(11, 4, 8, 0, 2, 0);
+                    voxel(13, 4, 10, 0, 6, 0);
+                    voxel(11, 4, 8, 0, 10, 0);
+                    voxel(9, 3, 7, 0, 13.5, 0, lightMat);
+                    eye(3, 3, 1, -3, 10, 5);
+                    eye(3, 3, 1, 3, 10, 5);
+                    voxel(4, 1.5, 1, 0, 7, 5, mouthMat);
+                    if (VISUAL_ENHANCEMENTS_ENABLED) {
+                        voxel(3, 10, 6, -8, 8, 3, lightMat);
+                        voxel(2, 8, 1, -8, 8, 6.5, darkMat);
+                        voxel(6, 2, 2, 0, 15, 0, lightMat);
+                        voxel(3, 3, 2, -3, 15, 0, lightMat);
+                        voxel(3, 3, 2, 3, 15, 0, lightMat);
+                        voxel(4, 4, 4, -7, 6, 3, darkMat);
+                        voxel(4, 4, 4, 7, 6, 3, darkMat);
+                        voxel(4, 5, 4, -4, 1, 2, lightMat);
+                        voxel(4, 5, 4, 4, 1, 2, lightMat);
+                        const shieldEmblemMat = new THREE.MeshStandardMaterial({ color: 0xffd700, roughness: 0.2, metalness: 0.8 });
+                        voxel(2, 4, 1, -8, 8, 6.5, shieldEmblemMat);
+                    }
+                    break;
+                case 'swarm':
+                    voxel(5, 2, 4, 0, 1, 0);
+                    voxel(6, 2, 5, 0, 3, 0);
+                    voxel(4, 2, 3, 0, 5, 0, lightMat);
+                    eye(1.5, 1.5, 1, -1.5, 3, 2.5, 0.5);
+                    eye(1.5, 1.5, 1, 1.5, 3, 2.5, 0.5);
+                    voxel(2, 1, 1, 0, 2, 2.5, mouthMat);
+                    if (VISUAL_ENHANCEMENTS_ENABLED) {
+                        voxel(2, 2, 2, -2, 4, 0, lightMat);
+                        voxel(2, 2, 2, 2, 4, 0, lightMat);
+                        voxel(2, 2, 2, 0, 2, -2, darkMat);
+                        voxel(2, 2, 2, -2, 1, 1, lightMat);
+                        voxel(2, 2, 2, 2, 1, 1, lightMat);
+                        voxel(0.5, 2, 0.5, -2, 5, 0, darkMat);
+                        voxel(0.5, 2, 0.5, 2, 5, 0, darkMat);
+                        voxel(1, 1, 2, -2, 0, 1, darkMat);
+                        voxel(1, 1, 2, 2, 0, 1, darkMat);
+                        voxel(1, 1, 2, 0, 0, -1, darkMat);
+                    }
+                    break;
+                case 'splitting':
+                    voxel(10, 3, 8, 0, 1.5, 0);
+                    voxel(12, 3, 10, 0, 4.5, 0);
+                    voxel(10, 3, 8, 0, 7.5, 0);
+                    voxel(8, 2, 6, 0, 10, 0, lightMat);
+                    eye(2.5, 2.5, 1, -2.5, 7, 4.5, 0.6);
+                    eye(2.5, 2.5, 1, 2.5, 7, 4.5, 0.6);
+                    voxel(5, 1.5, 1, 0, 5, 4.5, mouthMat);
+                    if (VISUAL_ENHANCEMENTS_ENABLED) {
+                        voxel(3, 2, 3, -4, 5, 0, lightMat);
+                        voxel(3, 2, 3, 4, 5, 0, lightMat);
+                        voxel(3, 2, 3, 0, 3, -4, darkMat);
+                        voxel(2, 3, 2, -5, 2, 2, lightMat);
+                        voxel(2, 3, 2, 5, 2, 2, lightMat);
+                        voxel(1, 2, 1, -3, 0, 2, lightMat);
+                        voxel(1, 2, 1, 3, 0, 2, lightMat);
+                        voxel(2, 2, 2, 0, 8, 3, lightMat);
+                        eye(1.5, 1.5, 1, 0, 8, 4.5, 0.5);
+                    }
+                    break;
+                case 'elemental_fire':
+                    voxel(8, 3, 6, 0, 1.5, 0);
+                    voxel(9, 3, 7, 0, 4.5, 0);
+                    voxel(7, 3, 5, 0, 7.5, 0);
+                    voxel(5, 2, 4, 0, 10, 0, lightMat);
+                    const fireEyeMat = new THREE.MeshStandardMaterial({ color: 0xffff00, roughness: 0.1, metalness: 0, emissive: 0xffaa00, emissiveIntensity: 0.8 });
+                    voxel(2.5, 2.5, 1, -2, 7, 3, fireEyeMat);
+                    voxel(2.5, 2.5, 1, 2, 7, 3, fireEyeMat);
+                    voxel(3, 1, 1, 0, 5, 3, mouthMat);
+                    if (VISUAL_ENHANCEMENTS_ENABLED) {
+                        voxel(2, 3, 2, -3, 11, 0, fireEyeMat);
+                        voxel(2, 3, 2, 3, 11, 0, fireEyeMat);
+                        voxel(3, 4, 2, 0, 12, 0, fireEyeMat);
+                        voxel(2, 3, 2, -5, 5, 2, fireEyeMat);
+                        voxel(2, 3, 2, 5, 5, 2, fireEyeMat);
+                        voxel(3, 3, 1, 0, 6, 3, fireEyeMat);
+                        voxel(2, 4, 2, 0, 6, -4, darkMat);
+                        voxel(2, 3, 2, 0, 4, -5, fireEyeMat);
+                        voxel(2, 1, 3, -2, 0, 1, fireEyeMat);
+                        voxel(2, 1, 3, 2, 0, 1, fireEyeMat);
+                    }
+                    break;
+                case 'elemental_ice':
+                    voxel(8, 3, 6, 0, 1.5, 0);
+                    voxel(9, 3, 7, 0, 4.5, 0);
+                    voxel(7, 3, 5, 0, 7.5, 0);
+                    voxel(5, 2, 4, 0, 10, 0, lightMat);
+                    const iceEyeMat = new THREE.MeshStandardMaterial({ color: 0xccffff, roughness: 0.1, metalness: 0.3, emissive: 0x00ffff, emissiveIntensity: 0.5 });
+                    voxel(2.5, 2.5, 1, -2, 7, 3, iceEyeMat);
+                    voxel(2.5, 2.5, 1, 2, 7, 3, iceEyeMat);
+                    voxel(3, 1, 1, 0, 5, 3, mouthMat);
+                    if (VISUAL_ENHANCEMENTS_ENABLED) {
+                        voxel(2, 4, 2, -3, 11, 0, lightMat);
+                        voxel(2, 4, 2, 3, 11, 0, lightMat);
+                        voxel(2, 3, 2, 0, 12, -2, lightMat);
+                        voxel(3, 3, 3, -6, 6, 0, iceEyeMat);
+                        voxel(3, 3, 3, 6, 6, 0, iceEyeMat);
+                        voxel(6, 1, 6, 0, 4, 0, lightMat);
+                        const frostMat = new THREE.MeshStandardMaterial({ color: 0xccffff, roughness: 0.1, metalness: 0, transparent: true, opacity: 0.5 });
+                        voxel(2, 2, 2, -2, 0, 3, frostMat);
+                        voxel(2, 2, 2, 2, 0, 3, frostMat);
+                        voxel(2, 2, 2, 0, 2, -3, frostMat);
+                    }
+                    break;
+                case 'elemental_poison':
+                    voxel(8, 3, 6, 0, 1.5, 0);
+                    voxel(9, 3, 7, 0, 4.5, 0);
+                    voxel(7, 3, 5, 0, 7.5, 0);
+                    voxel(5, 2, 4, 0, 10, 0, lightMat);
+                    const poisonEyeMat = new THREE.MeshStandardMaterial({ color: 0x88ff00, roughness: 0.2, metalness: 0, emissive: 0x55ff00, emissiveIntensity: 0.4 });
+                    voxel(2.5, 2.5, 1, -2, 7, 3, poisonEyeMat);
+                    voxel(2.5, 2.5, 1, 2, 7, 3, poisonEyeMat);
+                    voxel(3, 1, 1, 0, 5, 3, mouthMat);
+                    if (VISUAL_ENHANCEMENTS_ENABLED) {
+                        voxel(3, 3, 3, 0, 6, -4, poisonEyeMat);
+                        voxel(2, 2, 2, -2, 8, -3, poisonEyeMat);
+                        voxel(2, 2, 2, 2, 8, -3, poisonEyeMat);
+                        voxel(1, 2, 1, -3, 0, 2, poisonEyeMat);
+                        voxel(1, 2, 1, 3, 0, 2, poisonEyeMat);
+                        voxel(1, 2, 1, 0, 0, -2, poisonEyeMat);
+                        voxel(2, 4, 2, -5, 5, 2, darkMat);
+                        voxel(2, 4, 2, 5, 5, 2, darkMat);
+                        voxel(2, 2, 2, -4, 4, 0, lightMat);
+                        voxel(2, 2, 2, 4, 4, 0, lightMat);
+                    }
+                    break;
+                case 'siege':
+                    voxel(14, 5, 10, 0, 2.5, 0);
+                    voxel(16, 5, 12, 0, 7.5, 0);
+                    voxel(14, 5, 10, 0, 12.5, 0);
+                    voxel(10, 4, 8, 0, 17, 0);
+                    voxel(8, 3, 6, 0, 20.5, 0, lightMat);
+                    eye(3, 3, 1, -3, 12, 5);
+                    eye(3, 3, 1, 3, 12, 5);
+                    voxel(5, 2, 1, 0, 8, 5, mouthMat);
+                    if (VISUAL_ENHANCEMENTS_ENABLED) {
+                        const siegeMetalMat = new THREE.MeshStandardMaterial({ color: 0x555555, roughness: 0.3, metalness: 0.7 });
+                        voxel(5, 5, 8, 0, 12, 8, siegeMetalMat);
+                        voxel(4, 4, 2, 0, 12, 13, siegeMetalMat);
+                        voxel(7, 4, 8, -6, 0, 3, siegeMetalMat);
+                        voxel(7, 4, 8, 6, 0, 3, siegeMetalMat);
+                        voxel(4, 8, 2, -9, 10, 0, lightMat);
+                        voxel(4, 8, 2, 9, 10, 0, lightMat);
+                        voxel(8, 6, 4, 0, 12, -6, darkMat);
+                        voxel(2, 4, 2, -4, 18, -4, siegeMetalMat);
+                        voxel(2, 4, 2, 4, 18, -4, siegeMetalMat);
+                    }
+                    break;
+                case 'healer':
+                    voxel(7, 3, 5, 0, 1.5, 0);
+                    voxel(8, 3, 6, 0, 4.5, 0);
+                    voxel(6, 3, 4, 0, 7.5, 0);
+                    voxel(5, 2, 3, 0, 10, 0, lightMat);
+                    eye(2.5, 2.5, 1, -2, 7, 2.5);
+                    eye(2.5, 2.5, 1, 2, 7, 2.5);
+                    voxel(2.5, 1, 1, 0, 5, 2.5, mouthMat);
+                    if (VISUAL_ENHANCEMENTS_ENABLED) {
+                        const healerGoldMat = new THREE.MeshStandardMaterial({ color: 0xffd700, roughness: 0.2, metalness: 0.8, emissive: 0xffd700, emissiveIntensity: 0.3 });
+                        const healGemMat = new THREE.MeshStandardMaterial({ color: 0x00ff88, roughness: 0.1, metalness: 0.2, emissive: 0x00ff88, emissiveIntensity: 0.6 });
+                        voxel(6, 1, 1, 0, 12, 0, healerGoldMat);
+                        voxel(1, 1, 6, 3, 12, 0, healerGoldMat);
+                        voxel(1, 1, 6, -3, 12, 0, healerGoldMat);
+                        voxel(1, 8, 1, 5, 7, 3, healerGoldMat);
+                        voxel(2, 2, 2, 5, 11, 3, healerGoldMat);
+                        voxel(2, 2, 2, 5, 13, 3, healGemMat);
+                        voxel(7, 4, 5, 0, 2, 0, darkMat);
+                        voxel(3, 1, 1, 0, 6, 3, healerGoldMat);
+                        voxel(1, 3, 1, 0, 6, 3, healerGoldMat);
+                        voxel(2, 2, 2, -3, 0, 3, healGemMat);
+                        voxel(2, 2, 2, 3, 0, 3, healGemMat);
+                    }
+                    break;
+                case 'elite_basic':
+                    voxel(11, 4, 8, 0, 2, 0);
+                    voxel(13, 4, 10, 0, 6, 0);
+                    voxel(11, 4, 8, 0, 10, 0);
+                    voxel(9, 4, 7, 0, 14, 0);
+                    voxel(7, 2, 5, 0, 17, 0, lightMat);
+                    eye(3, 3, 1, -3.5, 10, 4.5);
+                    eye(3, 3, 1, 3.5, 10, 4.5);
+                    voxel(4, 1.5, 1, 0, 7, 4.5, mouthMat);
+                    if (VISUAL_ENHANCEMENTS_ENABLED) {
+                        const eliteGoldMat = new THREE.MeshStandardMaterial({ color: 0xffd700, roughness: 0.2, metalness: 0.8 });
+                        voxel(7, 2, 4, 0, 18.5, 0, eliteGoldMat);
+                        voxel(2, 3, 2, -3, 19, 0, eliteGoldMat);
+                        voxel(2, 3, 2, 3, 19, 0, eliteGoldMat);
+                        voxel(2, 2, 2, 0, 20, 0, eliteGoldMat);
+                        voxel(3, 2, 3, -7, 11, 0, eliteGoldMat);
+                        voxel(3, 2, 3, 7, 11, 0, eliteGoldMat);
+                        voxel(3, 2, 1, 0, 4, 4.5, eliteGoldMat);
+                        voxel(4, 3, 5, -3, 0, 2, lightMat);
+                        voxel(4, 3, 5, 3, 0, 2, lightMat);
+                        voxel(9, 8, 2, 0, 8, -4, darkMat);
+                    }
                     break;
                 default:
                     voxel(10, 4, 8, 0, 2, 0);
@@ -2466,6 +3834,16 @@
                 burrowing: { speed: 0.7, health: 30, damage: 2 },
                 spawner:   { speed: 0.35, health: 50, damage: 1 },
                 boss:      { speed: 0.3, health: 120, damage: 10 },
+                stealth:   { speed: 1.4, health: 25, damage: 2 },
+                shielded:  { speed: 0.5, health: 120, damage: 3 },
+                swarm:     { speed: 1.2, health: 5, damage: 1 },
+                splitting: { speed: 0.6, health: 60, damage: 3 },
+                elemental_fire:  { speed: 0.7, health: 45, damage: 4 },
+                elemental_ice:   { speed: 0.5, health: 50, damage: 3 },
+                elemental_poison:{ speed: 0.6, health: 40, damage: 2 },
+                siege:     { speed: 0.2, health: 200, damage: 15 },
+                healer:    { speed: 0.4, health: 35, damage: 1 },
+                elite_basic:{ speed: 0.9, health: 50, damage: 3 },
             };
             const stats = baseStats[type] || baseStats.basic;
             const waveHealthMult = 1 + (waveNum * 0.04);
@@ -2477,13 +3855,20 @@
             let damage = stats.damage + Math.floor(waveNum * 0.3);
             const colors = {
                 basic: 0x6B8E23, fast: 0xDAA520, tank: 0x4682B4,
-                sniper: 0x9370DB, burrowing: 0x8B4513, spawner: 0xDA70D6, boss: 0x8B0000
+                sniper: 0x9370DB, burrowing: 0x8B4513, spawner: 0xDA70D6, boss: 0x8B0000,
+                stealth: 0x2C3E50, shielded: 0x708090, swarm: 0x9ACD32,
+                splitting: 0xFF69B4, elemental_fire: 0xFF4500, elemental_ice: 0x00CED1,
+                elemental_poison: 0x32CD32, siege: 0x36454F, healer: 0xFFF8DC, elite_basic: 0xB8860B
             };
             const color = colors[type] || colors.basic;
-            const sizes = { basic: 1.0, fast: 0.85, tank: 1.2, sniper: 1.0, burrowing: 1.0, spawner: 1.1, boss: 1.5 };
+            const sizes = { basic: 1.0, fast: 0.85, tank: 1.2, sniper: 1.0, burrowing: 1.0, spawner: 1.1, boss: 1.5,
+                stealth: 0.9, shielded: 1.15, swarm: 0.6, splitting: 1.1,
+                elemental_fire: 1.05, elemental_ice: 1.05, elemental_poison: 1.0,
+                siege: 1.4, healer: 1.0, elite_basic: 1.1
+            };
             const size = sizes[type] || 1.0;
             const path = currentPath || [];
-            if (path.length === 0) { console.error('No path defined!'); return null; }
+            if (path.length === 0 || !path[0] || path[0].x === undefined) { console.error('No valid path defined!', currentPath); return null; }
             const startPos = path[0];
             const firstWaypoint = path[1] || path[path.length - 1];
             const startX = startPos.x * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
@@ -2496,13 +3881,18 @@
                 target: new THREE.Vector3(targetX, 8, targetZ), path: path, pathIndex: 0,
                 speed: speed, health: health, maxHealth: health, damage: damage,
                 variant: variant, id: Math.random(), type: type,
-                dodgeChance: type === 'fast' ? 0.15 : 0,
-                armorReduction: type === 'tank' ? 0.2 : 0,
-                towerDamageMult: type === 'sniper' ? 2 : 1,
-                invisible: type === 'burrowing' ? false : false,
+                dodgeChance: type === 'fast' ? 0.15 : (type === 'stealth' ? 0.3 : 0),
+                armorReduction: type === 'tank' ? 0.2 : (type === 'shielded' ? 0.4 : (type === 'siege' ? 0.2 : (type === 'elite_basic' ? 0.15 : 0))),
+                towerDamageMult: type === 'sniper' ? 2 : (type === 'siege' ? 3 : 1),
+                invisible: type === 'stealth' ? true : false,
                 invisTimer: type === 'burrowing' ? 0 : 0,
                 summonTimer: type === 'boss' ? 0 : 0,
-                spawnOnDeath: type === 'spawner' ? 2 : 0,
+                spawnOnDeath: type === 'spawner' ? 2 : (type === 'splitting' ? 2 : 0),
+                splitCount: type === 'splitting' ? 2 : 0,
+                healTimer: type === 'healer' ? 0 : 0,
+                burnDamage: type === 'elemental_fire' ? 2 : 0,
+                freezeSlow: type === 'elemental_ice' ? 0.5 : 0,
+                poisonDamage: type === 'elemental_poison' ? 1 : 0,
                 hitFlash: 0,
             };
             const hMult = enemyData?.healthMult || 1;
@@ -2516,9 +3906,10 @@
             enemy.mesh.scale.set(0, 0, 0);
             animateSpawn(enemy.mesh);
             const glowGeo = new THREE.SphereGeometry(12 * size, 8, 8);
-            const glowMat = new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 0.2 });
+            const glowMat = new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 0.15 + Math.random() * 0.1 });
             const glowMesh = new THREE.Mesh(glowGeo, glowMat);
             glowMesh.position.copy(enemy.position);
+            glowMesh.userData = { isEnemyGlow: true, phase: Math.random() * Math.PI * 2, baseOpacity: 0.15 };
             scene.add(glowMesh);
             enemy.glowMesh = glowMesh;
             const healthBarGeo = new THREE.PlaneGeometry(16, 3);
@@ -2598,6 +3989,29 @@
                 if (obj.userData && obj.userData.isWater) {
                     const d = obj.userData;
                     obj.material.opacity = d.baseOpacity + Math.sin(time * 2 + (d.phase || 0)) * 0.15;
+                }
+                if (obj.userData && obj.userData.isRipple) {
+                    const t = Date.now() * 0.002 + obj.userData.phase;
+                    obj.material.opacity = 0.2 + Math.sin(t) * 0.15;
+                    obj.scale.setScalar(1 + Math.sin(t) * 0.1);
+                }
+                if (obj.userData && obj.userData.isSpore) {
+                    const t = Date.now() * 0.004 + obj.userData.phase;
+                    obj.material.opacity = 0.3 + Math.sin(t) * 0.3;
+                    obj.position.y += Math.sin(t) * 0.02;
+                }
+                if (obj.userData && obj.userData.isPuddle) {
+                    const t = Date.now() * 0.003 + obj.userData.phase;
+                    obj.material.opacity = 0.5 + Math.sin(t) * 0.15;
+                }
+            });
+            // Animate enemy glows
+            gameState.enemies.forEach(enemy => {
+                if (enemy.glowMesh && enemy.glowMesh.userData.isEnemyGlow) {
+                    const t = Date.now() * 0.003 + enemy.glowMesh.userData.phase;
+                    enemy.glowMesh.material.opacity = enemy.glowMesh.userData.baseOpacity + Math.sin(t) * 0.08;
+                    const pulseScale = 1 + Math.sin(t) * 0.1;
+                    enemy.glowMesh.scale.setScalar(pulseScale);
                 }
             });
             pathSegments.forEach((segment, i) => {
@@ -2780,10 +4194,26 @@
             const tileSize = CONFIG.TILE_SIZE;
             gameState.enemies = gameState.enemies.filter(enemy => {
                 if (!enemy || !enemy.mesh || !enemy.mesh.parent) return false;
-                if (enemy.health <= 0) {
-                    createExplosion(enemy.position.x, enemy.position.y, enemy.position.z, 1.5);
+                if (enemy.health <= 0 && !enemy.deathProcessed) {
+                    enemy.deathProcessed = true;
+                    const reward = ENEMY_KILL_REWARDS[enemy.type] || 5;
+                    gameState.energy = Math.min(CONFIG.MAX_ENERGY, gameState.energy + reward);
+                    const explosionTypes = ['boss', 'siege', 'elemental_fire'];
+                    const dissolveTypes = ['stealth', 'splitting'];
+                    const collapseTypes = ['tank', 'elite_basic', 'shielded'];
+                    if (explosionTypes.includes(enemy.type)) {
+                        playDeathExplosion(enemy.position, enemy.type);
+                    } else if (dissolveTypes.includes(enemy.type)) {
+                        playDeathDissolve(enemy);
+                    } else if (collapseTypes.includes(enemy.type)) {
+                        playDeathCollapse(enemy);
+                    } else {
+                        createExplosion(enemy.position.x, enemy.position.y, enemy.position.z, 1.0);
+                    }
                     if (enemy.glowMesh && enemy.glowMesh.parent) scene.remove(enemy.glowMesh);
-                    scene.remove(enemy.mesh);
+                    if (!enemy.userData || (!enemy.userData.isDissolving && !enemy.userData.isCollapsing)) {
+                        scene.remove(enemy.mesh);
+                    }
                     gameState.totalKills = (gameState.totalKills || 0) + 1;
                     if (enemy.spawnOnDeath > 0) {
                         for (let s = 0; s < enemy.spawnOnDeath; s++) {
@@ -2794,16 +4224,36 @@
                             }
                         }
                     }
+                    if (!enemy.userData || (!enemy.userData.isDissolving && !enemy.userData.isCollapsing)) {
+                        return false;
+                    }
+                }
+                if (enemy.deathProcessed && (!enemy.userData || (!enemy.userData.isDissolving && !enemy.userData.isCollapsing))) {
                     return false;
                 }
-                // Burrowing invisibility toggle
-                if (enemy.type === 'burrowing') {
+                // Burrowing / stealth invisibility toggle
+                if (enemy.type === 'burrowing' || enemy.type === 'stealth') {
                     enemy.invisTimer += delta * 0.06;
                     if (enemy.invisTimer > 3) {
                         enemy.invisible = !enemy.invisible;
                         enemy.invisTimer = 0;
                         enemy.mesh.visible = !enemy.invisible;
                         if (enemy.glowMesh) enemy.glowMesh.visible = !enemy.invisible;
+                    }
+                }
+                // Healer behavior
+                if (enemy.type === 'healer') {
+                    enemy.healTimer += delta * 0.06;
+                    if (enemy.healTimer > 4) {
+                        enemy.healTimer = 0;
+                        gameState.enemies.forEach(other => {
+                            if (other !== enemy && other.mesh && other.mesh.parent) {
+                                const d = enemy.position.distanceTo(other.position);
+                                if (d < 40) {
+                                    other.health = Math.min(other.maxHealth, other.health + other.maxHealth * 0.08);
+                                }
+                            }
+                        });
                     }
                 }
                 // Boss summon timer
@@ -2830,6 +4280,46 @@
                             }
                         });
                     }
+                }
+                // Dissolve animation update
+                if (enemy.userData && enemy.userData.isDissolving) {
+                    enemy.userData.dissolveLife -= delta * 0.06;
+                    enemy.mesh.traverse(child => {
+                        if (child.material && child.material.transparent) {
+                            child.material.opacity = Math.max(0, enemy.userData.dissolveLife / 60);
+                        }
+                    });
+                    enemy.mesh.scale.addScalar(0.008);
+                    if (enemy.userData.dissolveLife <= 0) {
+                        scene.remove(enemy.mesh);
+                        return false;
+                    }
+                }
+                // Collapse animation update
+                if (enemy.userData && enemy.userData.isCollapsing) {
+                    enemy.userData.collapseLife -= delta * 0.06;
+                    const t = 1 - (enemy.userData.collapseLife / 40);
+                    enemy.mesh.rotation.x = enemy.userData.collapseBaseRot + t * Math.PI / 2;
+                    enemy.mesh.scale.y = Math.max(0.1, 1 - t * 0.8);
+                    enemy.mesh.scale.x = 1 + t * 0.3;
+                    enemy.mesh.scale.z = 1 + t * 0.3;
+                    if (enemy.userData.collapseLife <= 0) {
+                        scene.remove(enemy.mesh);
+                        return false;
+                    }
+                }
+                // Status duration countdown
+                if (enemy.statusDuration > 0) {
+                    enemy.statusDuration -= delta;
+                    if (enemy.statusDuration <= 0) {
+                        enemy.status = null;
+                        enemy.speedMultiplier = 1;
+                        removeStatusVisuals(enemy);
+                    }
+                }
+                // Apply status visuals
+                if (enemy.status) {
+                    applyStatusVisuals(enemy);
                 }
                 // Check for tower collision on current tile
                 const enemyGridX = Math.floor(enemy.position.x / tileSize);
@@ -2864,7 +4354,7 @@
                             enemy.target.set(next.x * tileSize + tileSize / 2, 8, next.y * tileSize + tileSize / 2);
                         }
                     } else {
-                        const moveSpeed = enemy.speed * delta * 0.06;
+                        const moveSpeed = enemy.speed * (enemy.speedMultiplier || 1) * delta * 0.06;
                         enemy.position.x += (dx / dist) * moveSpeed;
                         enemy.position.z += (dz / dist) * moveSpeed;
                         enemy.mesh.position.copy(enemy.position);
@@ -2928,7 +4418,15 @@
                                 child.material.emissive.setHex(0xffffff);
                             }
                         });
+                        createImpactEffect(proj.mesh.position, proj.typeKey);
                         createExplosion(proj.mesh.position.x, proj.mesh.position.y, proj.mesh.position.z, 0.8);
+                        const damagePercent = 1 - (proj.target.health / proj.target.maxHealth);
+                        applyDamageVisuals(proj.target.mesh, damagePercent);
+                        if (proj.typeKey === 'SLOW') {
+                            proj.target.status = 'SLOWED';
+                            proj.target.statusDuration = 3000;
+                            proj.target.speedMultiplier = TOWER_TYPES.SLOW.slowFactor || 0.5;
+                        }
                         scene.remove(proj.mesh);
                         if (proj.trail) { scene.remove(proj.trail); }
                         return false;
@@ -3099,15 +4597,15 @@
                 const baseR = ((seg.baseColor >> 16) & 0xff) / 255;
                 const baseG = ((seg.baseColor >> 8) & 0xff) / 255;
                 const baseB = (seg.baseColor & 0xff) / 255;
-                const greenR = 0x1a / 255;
-                const greenG = 0x8a / 255;
-                const greenB = 0x0a / 255;
-                const r = baseR * (1 - t) + greenR * t;
-                const g = baseG * (1 - t) + greenG * t;
-                const b = baseB * (1 - t) + greenB * t;
+                const warmR = 0xe0 / 255;
+                const warmG = 0xc0 / 255;
+                const warmB = 0x90 / 255;
+                const r = baseR * (1 - t) + warmR * t;
+                const g = baseG * (1 - t) + warmG * t;
+                const b = baseB * (1 - t) + warmB * t;
                 seg.mesh.material.color.setRGB(r, g, b);
-                seg.mesh.material.emissive.setRGB(r * 0.8, g * 0.8, b * 0.8);
-                seg.mesh.material.emissiveIntensity = 1.0 + t * 1.0;
+                seg.mesh.material.emissive.setRGB(0, 0, 0);
+                seg.mesh.material.emissiveIntensity = 0;
             });
         }
 
@@ -3160,7 +4658,7 @@
                     const towerPos = tower.mesh.position;
                     const range = TOWER_TYPES[tower.typeKey].range * CONFIG.TILE_SIZE;
                     for (const enemy of gameState.enemies) {
-                        if (!enemy.mesh.parent) continue;
+                        if (!enemy.mesh.parent || enemy.invisible) continue;
                         const dist = towerPos.distanceTo(enemy.position);
                         if (dist < range && dist < closestDist) { closestDist = dist; closestEnemy = enemy; }
                     }
@@ -3184,6 +4682,68 @@
             updateProjectiles(delta);
             updateTowerHealthBars();
             updateTerrain(delta);
+            // Update death particles
+            deathParticles = deathParticles.filter(p => {
+                if (!p.mesh || !p.mesh.parent) return false;
+                p.mesh.position.x += p.vx * 0.3;
+                p.mesh.position.y += p.vy * 0.3;
+                p.mesh.position.z += p.vz * 0.3;
+                p.vy -= p.gravity || 0.15;
+                p.life--;
+                p.mesh.material.opacity = Math.max(0, p.life / p.maxLife);
+                p.mesh.rotation.x += 0.1;
+                p.mesh.rotation.y += 0.1;
+                if (p.life <= 0) {
+                    scene.remove(p.mesh);
+                    return false;
+                }
+                return true;
+            });
+            // Update impact effects
+            impactEffects = impactEffects.filter(p => {
+                if (!p.mesh || !p.mesh.parent) return false;
+                p.mesh.position.x += (p.vx || 0) * 0.3;
+                p.mesh.position.y += (p.vy || 0) * 0.3;
+                p.mesh.position.z += (p.vz || 0) * 0.3;
+                p.life--;
+                if (p.grow) {
+                    p.mesh.scale.addScalar(0.03);
+                }
+                p.mesh.material.opacity = Math.max(0, p.life / 50);
+                if (p.life <= 0) {
+                    scene.remove(p.mesh);
+                    return false;
+                }
+                return true;
+            });
+            // Update wave markers
+            waveMarkers = waveMarkers.filter(m => {
+                if (!m.beacon || !m.beacon.parent) return false;
+                m.life--;
+                const t = m.life / 120;
+                m.beacon.material.opacity = 0.6 * t;
+                m.ring.material.opacity = 0.4 * t;
+                m.ring.scale.setScalar(1 + (1 - t) * 0.5);
+                if (m.life <= 0) {
+                    scene.remove(m.beacon);
+                    scene.remove(m.ring);
+                    return false;
+                }
+                return true;
+            });
+            // Update build animations
+            buildAnimations = buildAnimations.filter(b => {
+                if (!b.mesh || !b.mesh.parent) return false;
+                b.progress += b.speed;
+                const scale = Math.min(1, b.progress);
+                const bounce = scale < 1 ? scale + Math.sin(scale * Math.PI) * 0.15 : 1;
+                b.mesh.scale.setScalar(bounce);
+                if (b.progress >= 1) {
+                    b.mesh.scale.setScalar(1);
+                    return false;
+                }
+                return true;
+            });
             updateEnemyHealthBars();
             updateUI();
             renderer.render(scene, camera);
@@ -3342,7 +4902,7 @@
             const towerPos = tower.mesh.position;
             const range = TOWER_TYPES[tower.typeKey].range * CONFIG.TILE_SIZE;
             for (const enemy of gameState.enemies) {
-                if (!enemy.mesh || !enemy.mesh.parent) continue;
+                if (!enemy.mesh || !enemy.mesh.parent || enemy.invisible) continue;
                 const dist = towerPos.distanceTo(enemy.position);
                 if (dist < range && dist < closestDist) { closestDist = dist; closestEnemy = enemy; }
             }
