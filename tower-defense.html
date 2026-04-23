@@ -4543,7 +4543,7 @@
                         }
                         return false;
                     }
-                    const speed = proj.speed || 8;
+                    const speed = Math.min(proj.speed || 8, dist);
                     proj.mesh.position.x += (dx / dist) * speed;
                     proj.mesh.position.y += (dy / dist) * speed;
                     proj.mesh.position.z += (dz / dist) * speed;
