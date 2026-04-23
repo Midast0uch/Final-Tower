@@ -597,6 +597,34 @@
             return MATERIAL_CACHE[key];
         }
 
+        function disposeMesh(mesh) {
+            if (!mesh) return;
+            mesh.traverse(child => {
+                if (child.geometry) child.geometry.dispose();
+                if (child.material) {
+                    if (Array.isArray(child.material)) {
+                        child.material.forEach(m => m.dispose());
+                    } else {
+                        child.material.dispose();
+                    }
+                }
+            });
+            if (mesh.parent) mesh.parent.remove(mesh);
+        }
+
+        const TRAIL_GEOMETRY = new THREE.BoxGeometry(1, 1, 1);
+        const TRAIL_MATERIAL_CACHE = {};
+        function getTrailMaterial(typeKey) {
+            const key = typeKey || 'BASIC';
+            if (!TRAIL_MATERIAL_CACHE[key]) {
+                TRAIL_MATERIAL_CACHE[key] = new THREE.MeshBasicMaterial({
+                    color: TOWER_TYPES[key] ? TOWER_TYPES[key].color : '#ffffff',
+                    transparent: true, opacity: 0.5
+                });
+            }
+            return TRAIL_MATERIAL_CACHE[key].clone();
+        }
+
         const CONFIG = {
             MAP_WIDTH: 8,
             MAP_HEIGHT: 8,
@@ -678,7 +706,6 @@
         };
 
         let camera, scene, renderer;
-        let clouds = [];
         let ambientParticles = [];
         let pathSegments = [];
         let decoyTiles = [];
@@ -828,19 +855,19 @@
             if (!enemy || !enemy.mesh) return;
             const mesh = enemy.mesh;
             if (mesh.userData.slowRing) {
-                mesh.remove(mesh.userData.slowRing);
+                disposeMesh(mesh.userData.slowRing);
                 mesh.userData.slowRing = null;
             }
             if (mesh.userData.burnFlames) {
-                mesh.userData.burnFlames.forEach(f => mesh.remove(f));
+                mesh.userData.burnFlames.forEach(f => disposeMesh(f));
                 mesh.userData.burnFlames = null;
             }
             if (mesh.userData.iceShell) {
-                mesh.remove(mesh.userData.iceShell);
+                disposeMesh(mesh.userData.iceShell);
                 mesh.userData.iceShell = null;
             }
             if (mesh.userData.poisonBubbles) {
-                mesh.userData.poisonBubbles.forEach(b => mesh.remove(b));
+                mesh.userData.poisonBubbles.forEach(b => disposeMesh(b));
                 mesh.userData.poisonBubbles = null;
             }
         }
@@ -903,8 +930,9 @@
 
         function playBuildAnimation(mesh) {
             if (!mesh) return;
-            mesh.scale.set(0.01, 0.01, 0.01);
-            buildAnimations.push({ mesh: mesh, progress: 0, speed: 0.25 });
+            // Quick pop-in: start visible, bounce to full size in ~3 frames
+            mesh.scale.setScalar(0.6);
+            buildAnimations.push({ mesh: mesh, progress: 0.6, speed: 0.35 });
         }
 
         function showRangeIndicator(tower) {
@@ -918,23 +946,25 @@
         }
 
         function showWaveIncoming(waveNum) {
-            const path = currentPath || [];
-            if (path.length === 0) return;
-            const start = path[0];
-            const x = start.x * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
-            const z = start.y * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
-            const beaconGeo = new THREE.CylinderGeometry(3, 3, 40, 8);
-            const beaconMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.6 });
-            const beacon = new THREE.Mesh(beaconGeo, beaconMat);
-            beacon.position.set(x, 20, z);
-            scene.add(beacon);
-            const ringGeo = new THREE.RingGeometry(15, 18, 32);
-            const ringMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.4, side: THREE.DoubleSide });
-            const ring = new THREE.Mesh(ringGeo, ringMat);
-            ring.rotation.x = -Math.PI / 2;
-            ring.position.set(x, 1, z);
-            scene.add(ring);
-            waveMarkers.push({ beacon: beacon, ring: ring, life: 120 });
+            const paths = gameState.activePaths || [currentPath];
+            paths.forEach(path => {
+                if (!path || path.length === 0) return;
+                const start = path[0];
+                const x = start.x * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
+                const z = start.y * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
+                const beaconGeo = new THREE.CylinderGeometry(3, 3, 40, 8);
+                const beaconMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.6 });
+                const beacon = new THREE.Mesh(beaconGeo, beaconMat);
+                beacon.position.set(x, 20, z);
+                scene.add(beacon);
+                const ringGeo = new THREE.RingGeometry(15, 18, 32);
+                const ringMat = new THREE.MeshBasicMaterial({ color: 0xff0000, transparent: true, opacity: 0.4, side: THREE.DoubleSide });
+                const ring = new THREE.Mesh(ringGeo, ringMat);
+                ring.rotation.x = -Math.PI / 2;
+                ring.position.set(x, 1, z);
+                scene.add(ring);
+                waveMarkers.push({ beacon: beacon, ring: ring, life: 120 });
+            });
         }
 
         class PathGenerator {
@@ -966,12 +996,26 @@
             static generateSerpentinePath(mapW, mapH, wave) {
                 // Snake path that covers most of the map, going back and forth
                 const path = [];
-                const direction = wave % 2 === 0 ? 1 : -1;
-                let y = direction === 1 ? 0 : mapH - 1;
-                
-                for (let row = 0; row < mapH; row++) {
-                    const currentY = direction === 1 ? row : mapH - 1 - row;
-                    if (row % 2 === 0) {
+                // Add randomness so same wave type doesn't produce identical paths
+                const direction = (wave + Math.floor(Math.random() * 2)) % 2 === 0 ? 1 : -1;
+                const startRow = Math.floor(Math.random() * Math.max(1, Math.floor(mapH * 0.3)));
+                let y = direction === 1 ? startRow : mapH - 1 - startRow;
+                const rowOrder = [];
+                for (let r = 0; r < mapH; r++) rowOrder.push(r);
+                // Slightly shuffle adjacent rows for variety
+                for (let i = 0; i < rowOrder.length - 1; i += 2) {
+                    if (Math.random() < 0.15) {
+                        const tmp = rowOrder[i];
+                        rowOrder[i] = rowOrder[i + 1];
+                        rowOrder[i + 1] = tmp;
+                    }
+                }
+
+                for (let idx = 0; idx < rowOrder.length; idx++) {
+                    const row = direction === 1 ? rowOrder[idx] : rowOrder[rowOrder.length - 1 - idx];
+                    const currentY = row;
+                    const isEven = idx % 2 === 0;
+                    if (isEven) {
                         for (let x = 0; x < mapW; x++) {
                             path.push({ x, y: currentY });
                         }
@@ -980,10 +1024,10 @@
                             path.push({ x, y: currentY });
                         }
                     }
-                    if (row < mapH - 1) {
-                        const nextY = direction === 1 ? row + 1 : mapH - 2 - row;
+                    if (idx < rowOrder.length - 1) {
+                        const nextRow = direction === 1 ? rowOrder[idx + 1] : rowOrder[rowOrder.length - 1 - idx - 1];
                         const lastX = path[path.length - 1].x;
-                        path.push({ x: lastX, y: nextY });
+                        path.push({ x: lastX, y: nextRow });
                     }
                 }
                 return path;
@@ -994,16 +1038,18 @@
                 const path = [];
                 const visited = new Set();
                 let x = 0;
-                let y = Math.floor(mapH / 2);
+                let y = Math.floor(Math.random() * mapH);
                 let dx = 1, dy = 0;
                 let steps = 0;
                 const maxSteps = mapW * mapH;
-                
+                // Randomize turn priority for variety
+                const baseTurns = [{ dx: 0, dy: 1 }, { dx: 0, dy: -1 }, { dx: 1, dy: 0 }, { dx: -1, dy: 0 }];
+                const turns = baseTurns.sort(() => Math.random() - 0.5);
+
                 while (steps < maxSteps) {
                     const key = `${x},${y}`;
                     if (x < 0 || x >= mapW || y < 0 || y >= mapH || visited.has(key)) {
                         // Try to turn
-                        const turns = [{ dx: 0, dy: 1 }, { dx: 0, dy: -1 }, { dx: 1, dy: 0 }, { dx: -1, dy: 0 }];
                         let turned = false;
                         for (const t of turns) {
                             const nx = x + t.dx;
@@ -1574,6 +1620,11 @@
         const pathOptions = { mainPath: currentPath };
 
         function selectPathForWave(waveNum) {
+            // Clear old path entries to prevent stale multi-path data
+            Object.keys(pathOptions).forEach(key => {
+                if (key !== 'mainPath') delete pathOptions[key];
+            });
+
             // For wave 15+, generate multiple paths
             if (waveNum >= 15) {
                 const paths = PathGenerator.createMultiplePaths(waveNum);
@@ -1598,7 +1649,7 @@
                 }
                 attempts++;
             }
-            currentPath = PathGenerator.generateSerpentinePath(CONFIG.MAP_WIDTH, CONFIG.MAP_HEIGHT, 1);
+            currentPath = PathGenerator.generateSerpentinePath(CONFIG.MAP_WIDTH, CONFIG.MAP_HEIGHT, waveNum);
             pathOptions.mainPath = currentPath;
             pathOptions.path0 = currentPath;
             return [currentPath];
@@ -2018,7 +2069,6 @@
             const tileCenterX = gridX * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
             const tileCenterZ = gridZ * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
             meshGroup.position.set(tileCenterX, 6, tileCenterZ);
-            meshGroup.scale.set(0, 0, 0);
             scene.add(meshGroup);
             const range = TOWER_TYPES[typeKey].range * CONFIG.TILE_SIZE;
             const rangeGeo = new THREE.RingGeometry(range - 2, range, 32);
@@ -2122,7 +2172,8 @@
             createAmbientParticles();
             currentPath = PathGenerator.generateSerpentinePath(CONFIG.MAP_WIDTH, CONFIG.MAP_HEIGHT, 1);
             pathOptions.mainPath = currentPath;
-            drawPath(currentPath);
+            pathOptions.path0 = currentPath;
+            drawAllPaths();
             scatterDecoyTiles();
             createUI();
             setupEventListeners();
@@ -2205,7 +2256,7 @@
                 preparationStartTime = Date.now();
                 generateNewPath();
                 clearPathTiles();
-                drawPath(currentPath);
+                drawAllPaths();
                 scatterDecoyTiles();
                 createAmbientParticles();
                 updateUI();
@@ -3020,7 +3071,7 @@
             }
         }
 
-        function drawPath(path) {
+        function drawPath(path, pathColorOverride) {
             if (!path || !Array.isArray(path)) return;
             const edgeMat = new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.35 });
             const pathColors = [0xd4b896, 0xc9a87c, 0xdeb887, 0xcdb38b, 0xbca373];
@@ -3050,17 +3101,18 @@
                 if (!p || p.x === undefined) continue;
                 const x = p.x * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
                 const z = p.y * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
-                const pathColor = pathColors[Math.floor(Math.random() * pathColors.length)];
+                const decorations = [];
+                const pathColor = pathColorOverride || pathColors[Math.floor(Math.random() * pathColors.length)];
                 const pathGeo = new THREE.BoxGeometry(CONFIG.TILE_SIZE - 3, 1.5, CONFIG.TILE_SIZE - 3);
                 const pathMat = new THREE.MeshStandardMaterial({ color: pathColor, roughness: 0.4, metalness: 0.0 });
                 const pathTile = new THREE.Mesh(pathGeo, pathMat);
                 pathTile.position.set(x, 7.5, z);
                 pathTile.receiveShadow = true;
                 scene.add(pathTile);
-                pathSegments.push({ mesh: pathTile, animPhase: i * 0.15, baseColor: pathColor });
                 const pathEdges = new THREE.LineSegments(new THREE.EdgesGeometry(pathGeo), edgeMat);
                 pathEdges.position.copy(pathTile.position);
                 scene.add(pathEdges);
+                decorations.push(pathEdges);
                 const curbMat = new THREE.MeshStandardMaterial({ color: 0x8b7355, roughness: 0.6, metalness: 0.0 });
                 const curbH = 1.2;
                 const curbY = 7.5 + curbH / 2;
@@ -3068,16 +3120,20 @@
                 const curb1 = new THREE.Mesh(curbGeoLong, curbMat);
                 curb1.position.set(x, curbY, z - (CONFIG.TILE_SIZE - 2) / 2);
                 scene.add(curb1);
+                decorations.push(curb1);
                 const curb2 = new THREE.Mesh(curbGeoLong, curbMat);
                 curb2.position.set(x, curbY, z + (CONFIG.TILE_SIZE - 2) / 2);
                 scene.add(curb2);
+                decorations.push(curb2);
                 const curbGeoShort = new THREE.BoxGeometry(1, curbH, CONFIG.TILE_SIZE - 2);
                 const curb3 = new THREE.Mesh(curbGeoShort, curbMat);
                 curb3.position.set(x - (CONFIG.TILE_SIZE - 2) / 2, curbY, z);
                 scene.add(curb3);
+                decorations.push(curb3);
                 const curb4 = new THREE.Mesh(curbGeoShort, curbMat);
                 curb4.position.set(x + (CONFIG.TILE_SIZE - 2) / 2, curbY, z);
                 scene.add(curb4);
+                decorations.push(curb4);
                 if (VISUAL_ENHANCEMENTS_ENABLED) {
                     if (Math.random() > 0.6) {
                         const edgeStoneGeo = new THREE.BoxGeometry(3 + Math.random() * 3, 2, 3 + Math.random() * 3);
@@ -3087,6 +3143,7 @@
                         edgeStone.position.set(x + side * (CONFIG.TILE_SIZE / 2 - 2), 7, z + (Math.random() - 0.5) * 20);
                         edgeStone.rotation.y = Math.random() * Math.PI;
                         scene.add(edgeStone);
+                        decorations.push(edgeStone);
                     }
                     if (Math.random() > 0.5) {
                         const rutGeo = new THREE.BoxGeometry(2, 0.5, 15);
@@ -3094,6 +3151,7 @@
                         const rut = new THREE.Mesh(rutGeo, rutMat);
                         rut.position.set(x + (Math.random() - 0.5) * 10, 8.3, z);
                         scene.add(rut);
+                        decorations.push(rut);
                     }
                     if (Math.random() > 0.7) {
                         const debrisGeo = new THREE.BoxGeometry(2 + Math.random() * 2, 1, 2 + Math.random() * 2);
@@ -3102,6 +3160,7 @@
                         debris.position.set(x + (Math.random() - 0.5) * 20, 8.3, z + (Math.random() - 0.5) * 20);
                         debris.rotation.y = Math.random() * Math.PI;
                         scene.add(debris);
+                        decorations.push(debris);
                     }
                     if (Math.random() > 0.85) {
                         const puddleGeo = new THREE.BoxGeometry(10 + Math.random() * 8, 0.3, 8 + Math.random() * 6);
@@ -3110,6 +3169,7 @@
                         puddle.position.set(x + (Math.random() - 0.5) * 10, 8.4, z + (Math.random() - 0.5) * 10);
                         puddle.userData = { isPuddle: true, phase: Math.random() * Math.PI * 2 };
                         scene.add(puddle);
+                        decorations.push(puddle);
                     }
                 }
                 if (i % 3 === 0 && i < path.length - 1) {
@@ -3129,8 +3189,21 @@
                     else if (dx < 0) arrowGroup.rotation.y = -Math.PI / 2;
                     else if (dz < 0) arrowGroup.rotation.y = Math.PI;
                     scene.add(arrowGroup);
+                    decorations.push(arrowGroup);
                 }
+                pathSegments.push({ mesh: pathTile, animPhase: i * 0.15, baseColor: pathColor, decorations: decorations });
             }
+        }
+
+        function drawAllPaths() {
+            const paths = [];
+            for (let i = 0; pathOptions[`path${i}`]; i++) paths.push(pathOptions[`path${i}`]);
+            if (paths.length === 0) paths.push(currentPath);
+            const multiPathColors = [0x8B4513, 0x228B22, 0x800080, 0xFF00FF];
+            paths.forEach((path, index) => {
+                const overrideColor = paths.length > 1 ? multiPathColors[index % multiPathColors.length] : null;
+                drawPath(path, overrideColor);
+            });
         }
 
         function generatePathOptions() {}
@@ -3142,7 +3215,7 @@
             preparationStartTime = Date.now();
             generateNewPath();
             clearPathTiles();
-            drawPath(currentPath);
+            drawAllPaths();
             updateUI();
         }
 
@@ -3192,6 +3265,7 @@
                 gameState.energy = Math.min(CONFIG.MAX_ENERGY, gameState.energy + refund);
                 createExplosion(tower.mesh.position.x, tower.mesh.position.y, tower.mesh.position.z, 1.5);
                 scene.remove(tower.mesh);
+                disposeMesh(tower.mesh);
                 gameState.towers.splice(index, 1);
             });
             if (turretsToDestroy.length > 0) {
@@ -3202,10 +3276,18 @@
         function clearPathTiles() {
             pathSegments.forEach(seg => {
                 if (seg.mesh && seg.mesh.parent) { scene.remove(seg.mesh); }
+                disposeMesh(seg.mesh);
+                if (seg.decorations) {
+                    seg.decorations.forEach(d => {
+                        if (d && d.parent) scene.remove(d);
+                        disposeMesh(d);
+                    });
+                }
             });
             pathSegments = [];
             decoyTiles.forEach(tile => {
                 if (tile && tile.parent) { scene.remove(tile); }
+                disposeMesh(tile);
             });
             decoyTiles = [];
         }
@@ -3222,20 +3304,41 @@
             const waveData = generateWaveEnemies(gameState.wave);
             currentWaveNum = gameState.wave;
             currentWave = waveData;
-            waveEnemies = [...waveData.enemies];
+
+            // Setup active paths
+            const paths = [];
+            for (let i = 0; pathOptions[`path${i}`]; i++) paths.push(pathOptions[`path${i}`]);
+            if (paths.length === 0) paths.push(currentPath);
+            gameState.activePaths = paths;
+
+            // Distribute enemies across paths for simultaneous spawning
+            if (paths.length > 1) {
+                gameState.waveEnemiesByPath = paths.map(() => []);
+                waveData.enemies.forEach((e, i) => {
+                    gameState.waveEnemiesByPath[i % paths.length].push(e);
+                });
+                waveEnemies = [];
+                gameState.pathSpawnTimers = paths.map(() => Date.now());
+            } else {
+                waveEnemies = [...waveData.enemies];
+                gameState.waveEnemiesByPath = null;
+                gameState.pathSpawnTimers = null;
+            }
+
             lastSpawnTime = Date.now();
             const path = currentPath || [];
             const pathLength = path.length * CONFIG.TILE_SIZE;
             const baseSpeed = 2 + (gameState.wave * 0.2);
             const travelTime = (pathLength / baseSpeed);
-            const spawnTime = (waveEnemies.length * waveData.spawnDelay) / 1000;
+            const totalEnemies = waveData.enemies.length;
+            const spawnTime = (totalEnemies * waveData.spawnDelay) / 1000;
             waveDuration = Math.ceil(spawnTime + travelTime + 15);
             waveStartTime = Date.now();
             document.getElementById('start-wave-btn').style.display = 'none';
             showWaveAnnouncement(gameState.wave);
             showWaveIncoming(gameState.wave);
             updateUI();
-            console.log('Wave started:', gameState.wave, 'enemies:', waveEnemies.length);
+            console.log('Wave started:', gameState.wave, 'enemies:', totalEnemies, 'paths:', paths.length);
         }
 
         function startPreparationPhase() {
@@ -3255,11 +3358,12 @@
                 CONFIG.MAP_HEIGHT = oldHeight + 2;
                 console.log(`Map growing: ${oldWidth}x${oldHeight} -> ${CONFIG.MAP_WIDTH}x${CONFIG.MAP_HEIGHT}`);
                 extendTerrain(oldWidth, oldHeight);
+                updateCameraPosition();
             }
             gameState.wave++;
             generateNewPath();
             clearPathTiles();
-            drawPath(currentPath);
+            drawAllPaths();
             updateUI();
         }
 
@@ -3826,7 +3930,7 @@
             return group;
         }
 
-        function spawnEnemy(type, variant, waveNum, enemyData) {
+        function spawnEnemy(type, variant, waveNum, enemyData, assignedPath) {
             const baseStats = {
                 basic:     { speed: 0.8, health: 20, damage: 1 },
                 fast:      { speed: 1.6, health: 12, damage: 1 },
@@ -3868,7 +3972,7 @@
                 siege: 1.4, healer: 1.0, elite_basic: 1.1
             };
             const size = sizes[type] || 1.0;
-            const path = currentPath || [];
+            const path = assignedPath || currentPath || [];
             if (path.length === 0 || !path[0] || path[0].x === undefined) { console.error('No valid path defined!', currentPath); return null; }
             const startPos = path[0];
             const firstWaypoint = path[1] || path[path.length - 1];
@@ -4028,6 +4132,7 @@
                     p.mesh.material.opacity = Math.max(0, p.life / 50);
                     if (p.life <= 0) {
                         scene.remove(p.mesh);
+                        disposeMesh(p.mesh);
                         return false;
                     }
                     return true;
@@ -4044,6 +4149,7 @@
                     }
                     if (p.life <= 0) {
                         if (p.mesh && p.mesh.parent) scene.remove(p.mesh);
+                        disposeMesh(p.mesh);
                         return false;
                     }
                     return true;
@@ -4051,15 +4157,6 @@
                 return false;
             });
             
-            clouds.forEach((cloud, i) => {
-                if (cloud.group && cloud.group.parent) {
-                    const phase = cloud.phase || 0;
-                    cloud.group.position.x += cloud.speed * 0.5;
-                    cloud.group.position.y += Math.sin(time * 0.5 + phase) * 0.1;
-                    const maxX = CONFIG.MAP_WIDTH * CONFIG.TILE_SIZE * 1.5;
-                    if (cloud.group.position.x > maxX) { cloud.group.position.x = -100; }
-                }
-            });
             ambientParticles.forEach((p, i) => {
                 if (p.mesh && p.mesh.parent) {
                     const phase = p.phase || 0;
@@ -4211,9 +4308,10 @@
                     } else {
                         createExplosion(enemy.position.x, enemy.position.y, enemy.position.z, 1.0);
                     }
-                    if (enemy.glowMesh && enemy.glowMesh.parent) scene.remove(enemy.glowMesh);
+                    if (enemy.glowMesh && enemy.glowMesh.parent) { scene.remove(enemy.glowMesh); disposeMesh(enemy.glowMesh); }
                     if (!enemy.userData || (!enemy.userData.isDissolving && !enemy.userData.isCollapsing)) {
                         scene.remove(enemy.mesh);
+                        disposeMesh(enemy.mesh);
                     }
                     gameState.totalKills = (gameState.totalKills || 0) + 1;
                     if (enemy.spawnOnDeath > 0) {
@@ -4293,6 +4391,7 @@
                     enemy.mesh.scale.addScalar(0.008);
                     if (enemy.userData.dissolveLife <= 0) {
                         scene.remove(enemy.mesh);
+                        disposeMesh(enemy.mesh);
                         return false;
                     }
                 }
@@ -4306,6 +4405,7 @@
                     enemy.mesh.scale.z = 1 + t * 0.3;
                     if (enemy.userData.collapseLife <= 0) {
                         scene.remove(enemy.mesh);
+                        disposeMesh(enemy.mesh);
                         return false;
                     }
                 }
@@ -4333,7 +4433,8 @@
                         if (tower.health <= 0) {
                             createExplosion(tower.mesh.position.x, tower.mesh.position.y, tower.mesh.position.z, 2);
                             scene.remove(tower.mesh);
-                            if (tower.rangeIndicator) scene.remove(tower.rangeIndicator);
+                            disposeMesh(tower.mesh);
+                            if (tower.rangeIndicator) { scene.remove(tower.rangeIndicator); disposeMesh(tower.rangeIndicator); }
                             gameState.towers.splice(t, 1);
                             gameState.placedTowers = gameState.towers.length > 0;
                             updateStartButton();
@@ -4365,8 +4466,9 @@
                     }
                 } else {
                     gameState.lives -= enemy.damage;
-                    if (enemy.glowMesh && enemy.glowMesh.parent) scene.remove(enemy.glowMesh);
+                    if (enemy.glowMesh && enemy.glowMesh.parent) { scene.remove(enemy.glowMesh); disposeMesh(enemy.glowMesh); }
                     scene.remove(enemy.mesh);
+                    disposeMesh(enemy.mesh);
                     if (gameState.lives <= 0) { endGame(false); }
                     return false;
                 }
@@ -4382,9 +4484,9 @@
                 if (!proj || !proj.mesh || !proj.mesh.parent) return false;
                 proj.life = (proj.life || 0) - 1;
                 if (proj.life <= 0) {
-                    scene.remove(proj.mesh);
+                    disposeMesh(proj.mesh);
                     if (proj.trails) {
-                        proj.trails.forEach(t => { if (t.mesh && t.mesh.parent) scene.remove(t.mesh); });
+                        proj.trails.forEach(t => { if (t.mesh && t.mesh.parent) { scene.remove(t.mesh); if (t.mesh.material) t.mesh.material.dispose(); } });
                         proj.trails = [];
                     }
                     return false;
@@ -4396,9 +4498,9 @@
                     const dist = Math.sqrt(dx * dx + dy * dy + dz * dz);
                     if (dist < 3) {
                         if (proj.target.invisible) {
-                            scene.remove(proj.mesh);
+                            disposeMesh(proj.mesh);
                             if (proj.trails) {
-                                proj.trails.forEach(t => { if (t.mesh && t.mesh.parent) scene.remove(t.mesh); });
+                                proj.trails.forEach(t => { if (t.mesh && t.mesh.parent) { scene.remove(t.mesh); if (t.mesh.material) t.mesh.material.dispose(); } });
                                 proj.trails = [];
                             }
                             return false;
@@ -4434,9 +4536,9 @@
                             proj.target.statusDuration = 3000;
                             proj.target.speedMultiplier = TOWER_TYPES.SLOW.slowFactor || 0.5;
                         }
-                        scene.remove(proj.mesh);
+                        disposeMesh(proj.mesh);
                         if (proj.trails) {
-                            proj.trails.forEach(t => { if (t.mesh && t.mesh.parent) scene.remove(t.mesh); });
+                            proj.trails.forEach(t => { if (t.mesh && t.mesh.parent) { scene.remove(t.mesh); if (t.mesh.material) t.mesh.material.dispose(); } });
                             proj.trails = [];
                         }
                         return false;
@@ -4446,9 +4548,9 @@
                     proj.mesh.position.y += (dy / dist) * speed;
                     proj.mesh.position.z += (dz / dist) * speed;
                 } else {
-                    scene.remove(proj.mesh);
+                    disposeMesh(proj.mesh);
                     if (proj.trails) {
-                        proj.trails.forEach(t => { if (t.mesh && t.mesh.parent) scene.remove(t.mesh); });
+                        proj.trails.forEach(t => { if (t.mesh && t.mesh.parent) { scene.remove(t.mesh); if (t.mesh.material) t.mesh.material.dispose(); } });
                         proj.trails = [];
                     }
                     return false;
@@ -4551,23 +4653,38 @@
 
         function checkWaveCompletion() {
             if (!gameState.waveActive) return;
-            if (!waveEnemies || !currentWave) return;
+            if (!currentWave) return;
             const now = Date.now();
-            if (waveEnemies.length > 0 && now - lastSpawnTime >= currentWave.spawnDelay) {
+
+            // Multi-path simultaneous spawning
+            if (gameState.activePaths && gameState.activePaths.length > 1 && gameState.waveEnemiesByPath) {
+                gameState.activePaths.forEach((path, pathIndex) => {
+                    const queue = gameState.waveEnemiesByPath[pathIndex];
+                    if (!queue || queue.length === 0) return;
+                    const lastTime = gameState.pathSpawnTimers[pathIndex];
+                    if (now - lastTime >= currentWave.spawnDelay) {
+                        const enemyData = queue.shift();
+                        const enemy = spawnEnemy(enemyData.type, enemyData.variant, currentWaveNum, enemyData, path);
+                        if (enemy) gameState.enemies.push(enemy);
+                        gameState.pathSpawnTimers[pathIndex] = now;
+                    }
+                });
+            } else if (waveEnemies && waveEnemies.length > 0 && now - lastSpawnTime >= currentWave.spawnDelay) {
                 const enemyData = waveEnemies.shift();
                 const enemy = spawnEnemy(enemyData.type, enemyData.variant, currentWaveNum, enemyData);
                 if (enemy) { gameState.enemies.push(enemy); }
                 lastSpawnTime = now;
             }
+
             const elapsed = (now - waveStartTime) / 1000;
             const timerExpired = elapsed >= waveDuration;
-            if (timerExpired || (waveEnemies.length === 0 && gameState.enemies.length === 0)) {
+            const allQueuesEmpty = !gameState.waveEnemiesByPath || gameState.waveEnemiesByPath.every(q => !q || q.length === 0);
+            const globalQueueEmpty = !waveEnemies || waveEnemies.length === 0;
+            if (timerExpired || ((allQueuesEmpty && globalQueueEmpty) && gameState.enemies.length === 0)) {
                 gameState.enemies.forEach(enemy => {
-                    if (enemy.mesh && enemy.mesh.parent) {
-                        scene.remove(enemy.mesh);
-                        if (enemy.glowMesh && enemy.glowMesh.parent) { scene.remove(enemy.glowMesh); }
-                        if (enemy.healthBar && enemy.healthBar.parent) { enemy.mesh.remove(enemy.healthBar); }
-                    }
+                    if (enemy.glowMesh && enemy.glowMesh.parent) { scene.remove(enemy.glowMesh); disposeMesh(enemy.glowMesh); }
+                    if (enemy.mesh && enemy.mesh.parent) { scene.remove(enemy.mesh); }
+                    disposeMesh(enemy.mesh);
                 });
                 gameState.enemies = [];
                 waveComplete();
@@ -4706,6 +4823,7 @@
                 p.mesh.rotation.y += 0.1;
                 if (p.life <= 0) {
                     scene.remove(p.mesh);
+                    disposeMesh(p.mesh);
                     return false;
                 }
                 return true;
@@ -4723,6 +4841,7 @@
                 p.mesh.material.opacity = Math.max(0, p.life / 50);
                 if (p.life <= 0) {
                     scene.remove(p.mesh);
+                    disposeMesh(p.mesh);
                     return false;
                 }
                 return true;
@@ -4738,6 +4857,8 @@
                 if (m.life <= 0) {
                     scene.remove(m.beacon);
                     scene.remove(m.ring);
+                    disposeMesh(m.beacon);
+                    disposeMesh(m.ring);
                     return false;
                 }
                 return true;
@@ -4920,8 +5041,8 @@
             if (!closestEnemy) return;
             const projColor = TOWER_TYPES[tower.typeKey].color;
             const projSize = tower.typeKey === 'CANNON' ? 8 : tower.typeKey === 'SNIPER' ? 5 : 6;
-            const geo = new THREE.BoxGeometry(projSize, projSize, projSize * 1.5);
-            const mat = new THREE.MeshStandardMaterial({ color: projColor, roughness: 0.2, metalness: 0.3, emissive: projColor, emissiveIntensity: 0.8 });
+            const geo = new THREE.BoxGeometry(projSize, projSize, projSize * 2);
+            const mat = new THREE.MeshBasicMaterial({ color: projColor });
             const mesh = new THREE.Mesh(geo, mat);
             mesh.position.copy(towerPos);
             mesh.position.y += 12;
@@ -4947,12 +5068,8 @@
                 if (!proj.mesh || !proj.mesh.parent) return;
                 if (!proj.trails) proj.trails = [];
                 const trailSize = proj.typeKey === 'CANNON' ? 3 : 2;
-                const trailGeo = new THREE.BoxGeometry(trailSize, trailSize, trailSize);
-                const trailMat = new THREE.MeshBasicMaterial({
-                    color: TOWER_TYPES[proj.typeKey || 'BASIC'].color,
-                    transparent: true, opacity: 0.5
-                });
-                const trailMesh = new THREE.Mesh(trailGeo, trailMat);
+                const trailMesh = new THREE.Mesh(TRAIL_GEOMETRY, getTrailMaterial(proj.typeKey));
+                trailMesh.scale.setScalar(trailSize);
                 trailMesh.position.copy(proj.mesh.position);
                 scene.add(trailMesh);
                 proj.trails.push({ mesh: trailMesh, life: 8 });
@@ -4966,8 +5083,7 @@
                     t.mesh.scale.multiplyScalar(0.92);
                     if (t.life <= 0) {
                         scene.remove(t.mesh);
-                        t.mesh.geometry.dispose();
-                        t.mesh.material.dispose();
+                        if (t.mesh.material) t.mesh.material.dispose();
                         return false;
                     }
                     return true;
