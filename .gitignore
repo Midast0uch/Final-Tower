@@ -18,6 +18,10 @@ node_modules/
 api/keys.json
 *.key
 secrets/
+hf-config.js
+hf-token.txt
+models/
+bin/
 
 # Virtual environment
 venv/

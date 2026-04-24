@@ -16,6 +16,115 @@
             console.log('Three.js loaded successfully, version:', THREE.REVISION);
         }
     </script>
+    <script src="hf-config.js"></script>
+    <script>
+        // Seraph Vision — local llama.cpp server client
+        window.seraphVision = {
+            ready: false,
+            isLoading: true,
+            loadError: null,
+            errorReason: null,
+            onStatusChange: null,
+            serverUrl: '',
+
+            async init() {
+                this.serverUrl = window.location.origin;
+                // Skip server check when opened locally (file://) — no server available
+                if (window.location.protocol === 'file:') {
+                    this.isLoading = false;
+                    this.loadError = new Error('file:// protocol');
+                    this.errorReason = 'Run via server: node server.js';
+                    if (this.onStatusChange) this.onStatusChange('error');
+                    return;
+                }
+                console.log('[Seraph Vision] Checking local server...');
+                try {
+                    const res = await fetch(this.serverUrl + '/api/health', { method: 'GET' });
+                    if (!res.ok) {
+                        throw new Error('Server returned ' + res.status);
+                    }
+                    const data = await res.json();
+                    if (data.llamaReady) {
+                        this.ready = true;
+                        this.isLoading = false;
+                        console.log('[Seraph Vision] Server ready — ALL-SEEING');
+                        if (this.onStatusChange) this.onStatusChange('ready');
+                    } else {
+                        this.isLoading = true;
+                        console.log('[Seraph Vision] Server found, model loading...');
+                        if (this.onStatusChange) this.onStatusChange('loading');
+                        this._pollHealth();
+                    }
+                } catch (e) {
+                    this.isLoading = false;
+                    this.loadError = e;
+                    this.errorReason = 'Local server not running. Start with: node server.js';
+                    console.warn('[Seraph Vision] Server not found:', e.message);
+                    if (this.onStatusChange) this.onStatusChange('error');
+                }
+            },
+
+            async _pollHealth() {
+                let attempts = 0;
+                const maxAttempts = 120;
+                while (attempts < maxAttempts) {
+                    await new Promise(r => setTimeout(r, 2000));
+                    try {
+                        const res = await fetch(this.serverUrl + '/api/health');
+                        const data = await res.json();
+                        if (data.llamaReady) {
+                            this.ready = true;
+                            this.isLoading = false;
+                            console.log('[Seraph Vision] Model loaded — ALL-SEEING');
+                            if (this.onStatusChange) this.onStatusChange('ready');
+                            return;
+                        }
+                    } catch (e) {}
+                    attempts++;
+                }
+                this.isLoading = false;
+                this.loadError = new Error('Timeout');
+                this.errorReason = 'Vision model failed to load within 4 minutes.';
+                console.warn('[Seraph Vision] Model load timeout');
+                if (this.onStatusChange) this.onStatusChange('error');
+            },
+
+            async generate(imageBase64, prompt) {
+                if (!this.ready) return null;
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 45000);
+                const playerName = (localStorage.getItem('finalTowerUsername') || 'Architect');
+                try {
+                    const res = await fetch(this.serverUrl + '/api/vision', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ image: imageBase64, prompt: prompt, playerName: playerName }),
+                        signal: controller.signal,
+                    });
+                    clearTimeout(timeoutId);
+                    if (!res.ok) {
+                        const err = await res.json();
+                        throw new Error(err.error || 'Server error');
+                    }
+                    return await res.json();
+                } catch (e) {
+                    clearTimeout(timeoutId);
+                    if (e.name === 'AbortError') {
+                        console.warn('[Seraph Vision] Request timed out (45s)');
+                    } else {
+                        console.warn('[Seraph Vision] Generation failed:', e.message);
+                    }
+                    return null;
+                }
+            },
+        };
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', () => window.seraphVision.init());
+        } else {
+            window.seraphVision.init();
+        }
+    </script>
     <link href="https://fonts.googleapis.com/css2?family=Fredoka+One&family=Nunito:wght@600;700;800&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -504,6 +613,116 @@
             transition: all 0.2s cubic-bezier(0.25, 0.1, 0.25, 1);
         }
         .btn-restart:hover { background: #ff6961; transform: scale(1.03); }
+        /* === Seraph Text Bubble === */
+        .seraph-bubble {
+            position: absolute;
+            pointer-events: none;
+            z-index: 200;
+            background: rgba(10, 0, 20, 0.85);
+            backdrop-filter: saturate(180%) blur(12px);
+            -webkit-backdrop-filter: saturate(180%) blur(12px);
+            border: 1px solid rgba(255, 68, 0, 0.5);
+            box-shadow: 0 0 20px rgba(255, 68, 0, 0.25), inset 0 0 12px rgba(255, 170, 0, 0.1);
+            border-radius: 10px;
+            padding: 10px 16px;
+            max-width: 320px;
+            color: #ffd6a5;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 13px;
+            line-height: 1.4;
+            letter-spacing: 0.02em;
+            opacity: 0;
+            transform: translate(-50%, -100%) translateY(-12px);
+            transition: opacity 0.4s ease;
+        }
+        .seraph-bubble.visible { opacity: 1; }
+        .seraph-bubble::after {
+            content: '';
+            position: absolute;
+            bottom: -6px;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 0;
+            border-left: 6px solid transparent;
+            border-right: 6px solid transparent;
+            border-top: 6px solid rgba(255, 68, 0, 0.5);
+        }
+        .seraph-bubble-typing::after {
+            content: '|';
+            animation: blinkCursor 0.6s step-end infinite;
+            color: #ff4400;
+            margin-left: 2px;
+        }
+        @keyframes blinkCursor {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+        .seraph-bubble-dismiss {
+            position: absolute;
+            top: 4px;
+            right: 6px;
+            font-size: 10px;
+            color: rgba(255, 214, 165, 0.5);
+            cursor: pointer;
+            pointer-events: auto;
+        }
+        .seraph-bubble-badge {
+            display: inline-block;
+            font-size: 8px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            color: #ff4400;
+            background: rgba(255, 68, 0, 0.12);
+            border: 1px solid rgba(255, 68, 0, 0.25);
+            border-radius: 4px;
+            padding: 1px 5px;
+            margin-bottom: 4px;
+        }
+        /* Vision model loading status indicator */
+        #seraph-status {
+            position: fixed;
+            bottom: 12px;
+            right: 12px;
+            z-index: 300;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 10px;
+            padding: 4px 8px;
+            border-radius: 6px;
+            background: rgba(10, 0, 20, 0.8);
+            border: 1px solid rgba(255, 68, 0, 0.3);
+            color: #ffd6a5;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+            pointer-events: none;
+        }
+        #seraph-status.visible { opacity: 1; }
+        #seraph-status.loading { color: #ffaa00; border-color: rgba(255, 170, 0, 0.4); }
+        #seraph-status.ready { color: #00ff88; border-color: rgba(0, 255, 136, 0.3); }
+        #seraph-status.offline { color: #ff4444; border-color: rgba(255, 68, 68, 0.3); }
+        #seraph-status .status-detail {
+            display: block;
+            font-size: 9px;
+            opacity: 0.7;
+            margin-top: 2px;
+            max-width: 220px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+        #seraph-retry {
+            margin-top: 4px;
+            padding: 2px 8px;
+            font-size: 9px;
+            background: rgba(255, 68, 0, 0.2);
+            border: 1px solid rgba(255, 68, 0, 0.4);
+            color: #ffaa00;
+            border-radius: 4px;
+            cursor: pointer;
+            pointer-events: auto;
+            display: none;
+        }
+        #seraph-retry:hover { background: rgba(255, 68, 0, 0.35); }
     </style>
 </head>
 <body>
@@ -599,6 +818,7 @@
 
         function disposeMesh(mesh) {
             if (!mesh) return;
+            if (mesh.parent) mesh.parent.remove(mesh);
             mesh.traverse(child => {
                 if (child.geometry) child.geometry.dispose();
                 if (child.material) {
@@ -609,7 +829,6 @@
                     }
                 }
             });
-            if (mesh.parent) mesh.parent.remove(mesh);
         }
 
         const TRAIL_GEOMETRY = new THREE.BoxGeometry(1, 1, 1);
@@ -657,7 +876,7 @@
             BASIC: { name: 'Basic Tower', cost: 20, damage: 5, range: 7, color: '#ff6b6b', iconType: 'basic', fireRate: 800 },
             SNIPER: { name: 'Sniper', cost: 40, damage: 15, range: 18, color: '#4ecdc4', iconType: 'sniper', fireRate: 2000 },
             CANNON: { name: 'Cannon', cost: 60, damage: 8, range: 6, area: 4, color: '#ffe66d', iconType: 'cannon', fireRate: 1500 },
-            TRAP: { name: 'Trap', cost: 35, damage: 30, range: 3, oneTime: true, color: '#ff8787', iconType: 'trap', fireRate: 999999 },
+            TRAP: { name: 'Trap', cost: 35, damage: 40, range: 2, area: 3, color: '#ff8787', iconType: 'trap', fireRate: 2500 },
             SLOW: { name: 'Slow', cost: 45, damage: 2, range: 8, slowFactor: 0.5, color: '#74c0fc', iconType: 'slow', fireRate: 500 }
         };
 
@@ -714,6 +933,7 @@
         let impactEffects = [];
         let buildAnimations = [];
         let waveMarkers = [];
+        let seraph;
 
         const ENEMY_KILL_REWARDS = {
             basic: 5, fast: 8, tank: 12, sniper: 10, burrowing: 8, spawner: 15, boss: 50,
@@ -914,6 +1134,26 @@
                     const speed = 0.5 + Math.random() * 1.5;
                     impactEffects.push({ mesh: mesh, life: 20, vy: 0.5 + Math.random(), vx: Math.cos(angle) * speed, vz: Math.sin(angle) * speed });
                 }
+            } else if (typeKey === 'TRAP') {
+                for (let i = 0; i < 16; i++) {
+                    const geo = new THREE.BoxGeometry(1.5, 1.5, 1.5);
+                    const mat = new THREE.MeshBasicMaterial({ color: 0xff3333, transparent: true, opacity: 0.9 });
+                    const mesh = new THREE.Mesh(geo, mat);
+                    mesh.position.copy(position);
+                    mesh.position.x += (Math.random() - 0.5) * 8;
+                    mesh.position.y += Math.random() * 6;
+                    mesh.position.z += (Math.random() - 0.5) * 8;
+                    scene.add(mesh);
+                    const angle = Math.random() * Math.PI * 2;
+                    const speed = 2 + Math.random() * 5;
+                    impactEffects.push({ mesh: mesh, life: 25, vy: 3 + Math.random() * 4, vx: Math.cos(angle) * speed, vz: Math.sin(angle) * speed });
+                }
+                const smokeGeo = new THREE.BoxGeometry(5, 5, 5);
+                const smokeMat = new THREE.MeshBasicMaterial({ color: 0x333333, transparent: true, opacity: 0.6 });
+                const smoke = new THREE.Mesh(smokeGeo, smokeMat);
+                smoke.position.copy(position);
+                scene.add(smoke);
+                impactEffects.push({ mesh: smoke, life: 40, vy: 1, vx: 0, vz: 0, grow: true });
             } else {
                 for (let i = 0; i < 5; i++) {
                     const geo = new THREE.BoxGeometry(0.8, 0.8, 0.8);
@@ -2035,36 +2275,36 @@
                 voxel(1, 1, 12, -9.5, 13, 0, runeMat);
                 head = meshGroup.children[meshGroup.children.length - 1];
             } else if (typeKey === 'TRAP') {
-                const baseMat = new THREE.MeshStandardMaterial({ color: 0x9b2c2c, roughness: 0.7, metalness: 0.1 });
-                const spikeMat = new THREE.MeshStandardMaterial({ color: 0xe53e3e, roughness: 0.4, metalness: 0.3 });
-                const accentMat = new THREE.MeshStandardMaterial({ color: 0xfc8181, roughness: 0.3, metalness: 0.4 });
-                const warningMat = new THREE.MeshStandardMaterial({ color: 0xffcc00, roughness: 0.3, metalness: 0.2, emissive: 0xffcc00, emissiveIntensity: 0.2 });
-                voxel(30, 2, 30, 0, 1, 0, baseMat);
-                voxel(28, 3, 28, 0, 3.5, 0, baseMat);
-                voxel(20, 1, 1, 0, 5, 14, warningMat);
-                voxel(20, 1, 1, 0, 5, -14, warningMat);
-                voxel(1, 1, 20, 14, 5, 0, warningMat);
-                voxel(1, 1, 20, -14, 5, 0, warningMat);
-                voxel(4, 12, 4, -10, 9, -10, spikeMat);
-                voxel(4, 12, 4, 10, 9, -10, spikeMat);
-                voxel(4, 12, 4, -10, 9, 10, spikeMat);
-                voxel(4, 12, 4, 10, 9, 10, spikeMat);
-                voxel(2, 3, 2, -10, 16, -10, accentMat);
-                voxel(2, 3, 2, 10, 16, -10, accentMat);
-                voxel(2, 3, 2, -10, 16, 10, accentMat);
-                voxel(2, 3, 2, 10, 16, 10, accentMat);
-                voxel(5, 14, 5, 0, 10, 0, spikeMat);
-                voxel(3, 4, 3, 0, 19, 0, accentMat);
-                voxel(1, 10, 1, 0, 10, 2.5, accentMat);
-                voxel(1, 10, 1, 0, 10, -2.5, accentMat);
-                voxel(1, 10, 1, 2.5, 10, 0, accentMat);
-                voxel(1, 10, 1, -2.5, 10, 0, accentMat);
-                voxel(3, 8, 2, -6, 7, 14, spikeMat);
-                voxel(3, 8, 2, 6, 7, 14, spikeMat);
-                voxel(3, 8, 2, -6, 7, -14, spikeMat);
-                voxel(3, 8, 2, 6, 7, -14, spikeMat);
-                voxel(4, 3, 4, 0, 5, 0, warningMat);
-                head = meshGroup.children[meshGroup.children.length - 1];
+                const plateMat = new THREE.MeshStandardMaterial({ color: 0x5c2a2a, roughness: 0.5, metalness: 0.6 });
+                const spikeMat = new THREE.MeshStandardMaterial({ color: 0xc0c0c0, roughness: 0.2, metalness: 0.9, emissive: 0xff3333, emissiveIntensity: 0.3 });
+                const glowMat = new THREE.MeshBasicMaterial({ color: 0xff4444, transparent: true, opacity: 0.35 });
+                // Flat pressure plate base
+                voxel(32, 2, 32, 0, 1, 0, plateMat);
+                voxel(24, 1, 24, 0, 2.5, 0, plateMat);
+                // Glow ring on surface
+                const glowGeo = new THREE.RingGeometry(10, 14, 24);
+                const glowRing = new THREE.Mesh(glowGeo, glowMat);
+                glowRing.rotation.x = -Math.PI / 2;
+                glowRing.position.y = 2.6;
+                meshGroup.add(glowRing);
+                // Retractable spikes stored for animation
+                const spikePositions = [
+                    { x: -10, z: -10 }, { x: 10, z: -10 }, { x: -10, z: 10 }, { x: 10, z: 10 },
+                    { x: 0, z: -12 }, { x: 0, z: 12 }, { x: -12, z: 0 }, { x: 12, z: 0 },
+                    { x: 0, z: 0 }
+                ];
+                const trapSpikes = [];
+                spikePositions.forEach(pos => {
+                    const sGeo = new THREE.ConeGeometry(1.2, 8, 6);
+                    const spike = new THREE.Mesh(sGeo, spikeMat);
+                    spike.position.set(pos.x, 2, pos.z);
+                    spike.scale.set(1, 0.01, 1); // hidden by default (retracted)
+                    meshGroup.add(spike);
+                    trapSpikes.push(spike);
+                });
+                meshGroup.userData.trapSpikes = trapSpikes;
+                meshGroup.userData.glowRing = glowRing;
+                head = glowRing;
             }
             const tileCenterX = gridX * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
             const tileCenterZ = gridZ * CONFIG.TILE_SIZE + CONFIG.TILE_SIZE / 2;
@@ -2091,6 +2331,16 @@
                 rangeIndicator: rangeIndicator, barrel: barrel, head: head,
                 health: towerHealth.health, maxHealth: towerHealth.health
             };
+            if (typeKey === 'TRAP') {
+                towerData.trapArmed = true;
+                towerData.trapCooldown = 0;
+                towerData.trapCooldownMax = TOWER_TYPES.TRAP.fireRate;
+                // Set initial armed visual
+                const spikes = meshGroup.userData.trapSpikes;
+                const glow = meshGroup.userData.glowRing;
+                if (spikes) spikes.forEach(s => { s.scale.y = 1; s.position.y = 5; });
+                if (glow) glow.material.opacity = 0.5;
+            }
             const healthBarGeo = new THREE.PlaneGeometry(24, 4);
             const healthBarBgMat = new THREE.MeshBasicMaterial({ color: 0x333333, transparent: true, opacity: 0.8, side: THREE.DoubleSide });
             const healthBarBg = new THREE.Mesh(healthBarGeo, healthBarBgMat);
@@ -2108,6 +2358,7 @@
             healthBarBg.visible = false;
             gameState.towers.push(towerData);
             gameState.placedTowers = true;
+            if (seraph) seraph.onTowerPlaced();
             updateStartButton();
             updateUI();
             return towerData;
@@ -2119,6 +2370,778 @@
             if (gameState.placedTowers && !gameState.waveActive) {
                 startBtn.textContent = `START WAVE ${gameState.wave}`;
                 startBtn.style.background = '#69db7c';
+            }
+        }
+
+        // ========================================================================
+        // VOXEL SERAPH — Ophanim Seraph (Malevolent Cloud-Piercing Overseer)
+        // ========================================================================
+        class VoxelSeraph {
+            constructor() {
+                this.group = null;
+                this.centralEye = null;
+                this.rings = [];
+                this.satellites = [];
+                this.wings = [];
+                this.bubbleDiv = null;
+                this.bubbleQueue = [];
+                this.bubbleVisible = false;
+                this.bubbleTimer = 0;
+                this.state = 'idle';
+                this.stateTimer = 0;
+                this.time = 0;
+                this.baseY = 95;
+                this.fogHeight = 60;
+                this.cameraAngleOffset = Math.PI * 0.75; // Position opposite to default camera view
+                this.hoverRadius = Math.max(CONFIG.MAP_WIDTH, CONFIG.MAP_HEIGHT) * CONFIG.TILE_SIZE * 0.45;
+                this.lightningLight = null;
+                this.pupilScale = 1;
+                this.targetPupilScale = 1;
+                this.lastTauntTime = 0;
+                this.tauntCooldown = 8000;
+                this.lastScreenshotTime = 0;
+                this.screenshotInterval = 20000; // 20s — llama-server on CPU needs ~15-30s per image
+                this.preWrittenTaunts = [
+                    "{name} stacks stones like a child building walls against the tide...",
+                    "I see you, {name}. All of me sees you.",
+                    "Geometric perfection mocks your chaos, {name}.",
+                    "Your towers are merely pebbles in the infinite, {name}.",
+                    "The wheels turn, {name}. You do not.",
+                    "Every path you build, I have already foreseen, {name}.",
+                    "Your strategy is... quaint, {name}.",
+                    "How many eyes must watch before you crumble, {name}?",
+                    "The fog remembers, {name}. The fog forgives nothing.",
+                    "You organize, {name}. I annihilate."
+                ];
+                this.fallbackIndex = 0;
+                this.isProcessingVision = false;
+                this.visionPrompt = ''; // server.js handles the prompt; this is unused
+            }
+
+            init(scene) {
+                this.scene = scene;
+                this.group = new THREE.Group();
+                this.group.renderOrder = 20;
+
+                // Materials
+                this.matSclera = new THREE.MeshStandardMaterial({ color: 0xe8e6d1, roughness: 0.8, fog: false });
+                this.matIris = new THREE.MeshStandardMaterial({ color: 0x4a004a, emissive: 0x2a002a, emissiveIntensity: 0.5, fog: false });
+                this.matPupil = new THREE.MeshBasicMaterial({ color: 0xff0040, fog: false });
+                this.matRune = new THREE.MeshStandardMaterial({ color: 0xffaa00, emissive: 0xff4400, emissiveIntensity: 2, fog: false });
+                this.matRingBase = new THREE.MeshStandardMaterial({ color: 0xd8d6c1, roughness: 0.7, metalness: 0.4, fog: false });
+                this.matSatellite = new THREE.MeshStandardMaterial({ color: 0xcccccc, roughness: 0.5, fog: false });
+                this.matWingBone = new THREE.MeshStandardMaterial({ color: 0x4a004a, emissive: 0x2a002a, emissiveIntensity: 0.5, roughness: 0.6, metalness: 0.5, fog: false });
+                this.matWingFeather = new THREE.MeshStandardMaterial({ color: 0xe8e6d1, emissive: 0xffffff, emissiveIntensity: 0.1, roughness: 0.9, transparent: true, opacity: 0.75, fog: false });
+                this.voxelGeo = new THREE.BoxGeometry(1, 1, 1);
+
+                this._buildCentralEye();
+                this._buildRings();
+                this._buildSatellites();
+                this._buildWings();
+                this._buildLightning();
+
+                this._updatePositionFromCamera();
+                this.group.position.y = this.baseY;
+                scene.add(this.group);
+
+                this._createBubbleDOM();
+
+                // Hook into vision model status changes
+                if (window.seraphVision) {
+                    window.seraphVision.onStatusChange = (status) => {
+                        if (status === 'ready' && seraph) {
+                            seraph.showTaunt('I see you now, {name}. Every tower. Every sin.');
+                        }
+                        if (seraph) seraph._updateVisionStatus();
+                    };
+                }
+            }
+
+            _buildCentralEye() {
+                const eyeGroup = new THREE.Group();
+                const instances = [];
+                const runeInstances = [];
+
+                // Ellipsoid sclera: 16x16x12
+                const a = 8, b = 8, c = 6;
+                for (let x = -a; x <= a; x++) {
+                    for (let y = -b; y <= b; y++) {
+                        for (let z = -c; z <= c; z++) {
+                            const dist = (x * x) / (a * a) + (y * y) / (b * b) + (z * z) / (c * c);
+                            if (dist <= 1.0 && dist >= 0.6) {
+                                const isRune = Math.random() < 0.02;
+                                if (isRune) {
+                                    runeInstances.push({ x, y, z });
+                                } else {
+                                    instances.push({ x, y, z });
+                                }
+                            }
+                        }
+                    }
+                }
+
+                // Iris ring behind front surface
+                for (let x = -5; x <= 5; x++) {
+                    for (let y = -5; y <= 5; y++) {
+                        const r2 = x * x + y * y;
+                        if (r2 >= 4 && r2 <= 20) {
+                            runeInstances.push({ x, y, z: 5 });
+                        }
+                    }
+                }
+
+                // Pupil
+                const pupilGroup = new THREE.Group();
+                for (let x = -1; x <= 0; x++) {
+                    for (let y = -2; y <= 1; y++) {
+                        const mesh = new THREE.Mesh(this.voxelGeo, this.matPupil);
+                        mesh.position.set(x + 0.5, y + 0.5, 6);
+                        mesh.scale.set(1, 1, 0.5);
+                        pupilGroup.add(mesh);
+                    }
+                }
+                this.pupilGroup = pupilGroup;
+                eyeGroup.add(pupilGroup);
+
+                if (instances.length > 0) {
+                    const mesh = new THREE.InstancedMesh(this.voxelGeo, this.matSclera, instances.length);
+                    const dummy = new THREE.Object3D();
+                    instances.forEach((pos, i) => {
+                        dummy.position.set(pos.x, pos.y, pos.z);
+                        dummy.updateMatrix();
+                        mesh.setMatrixAt(i, dummy.matrix);
+                    });
+                    mesh.instanceMatrix.needsUpdate = true;
+                    eyeGroup.add(mesh);
+                }
+                if (runeInstances.length > 0) {
+                    const mesh = new THREE.InstancedMesh(this.voxelGeo, this.matIris, runeInstances.length);
+                    const dummy = new THREE.Object3D();
+                    runeInstances.forEach((pos, i) => {
+                        dummy.position.set(pos.x, pos.y, pos.z);
+                        dummy.updateMatrix();
+                        mesh.setMatrixAt(i, dummy.matrix);
+                    });
+                    mesh.instanceMatrix.needsUpdate = true;
+                    eyeGroup.add(mesh);
+                }
+
+                this.centralEye = eyeGroup;
+                this.group.add(eyeGroup);
+            }
+
+            _buildRings() {
+                const ringConfigs = [
+                    { majorR: 18, minorR: 2, count: 120, speed: 0.3, rotX: Math.PI / 4, rotY: 0, rotZ: Math.PI / 8 },
+                    { majorR: 24, minorR: 2.5, count: 160, speed: -0.2, rotX: -Math.PI / 6, rotY: Math.PI / 3, rotZ: 0 },
+                    { majorR: 30, minorR: 3, count: 200, speed: 0.15, rotX: 0, rotY: -Math.PI / 4, rotZ: Math.PI / 6 }
+                ];
+
+                ringConfigs.forEach((cfg, idx) => {
+                    const ringGroup = new THREE.Group();
+                    const instances = [];
+                    const runeIndices = [];
+
+                    for (let i = 0; i < cfg.count; i++) {
+                        const t = (i / cfg.count) * Math.PI * 2;
+                        const x = Math.cos(t) * cfg.majorR;
+                        const y = Math.sin(t) * cfg.majorR;
+                        const z = 0;
+                        instances.push({ x, y, z });
+                        if (i % Math.floor(cfg.count / 8) === 0) {
+                            runeIndices.push(i);
+                        }
+                    }
+
+                    const baseMesh = new THREE.InstancedMesh(this.voxelGeo, this.matRingBase, instances.length);
+                    const dummy = new THREE.Object3D();
+                    instances.forEach((pos, i) => {
+                        dummy.position.set(pos.x, pos.y, pos.z);
+                        dummy.scale.set(1.2, 1.2, 1.2);
+                        dummy.updateMatrix();
+                        baseMesh.setMatrixAt(i, dummy.matrix);
+                    });
+                    baseMesh.instanceMatrix.needsUpdate = true;
+                    ringGroup.add(baseMesh);
+
+                    // Rune meshes (separate for individual glow animation)
+                    const runeMesh = new THREE.InstancedMesh(this.voxelGeo, this.matRune, runeIndices.length);
+                    runeIndices.forEach((ri, i) => {
+                        const pos = instances[ri];
+                        dummy.position.set(pos.x, pos.y, pos.z);
+                        dummy.scale.set(1.8, 1.8, 1.8);
+                        dummy.updateMatrix();
+                        runeMesh.setMatrixAt(i, dummy.matrix);
+                    });
+                    runeMesh.instanceMatrix.needsUpdate = true;
+                    ringGroup.add(runeMesh);
+
+                    ringGroup.rotation.set(cfg.rotX, cfg.rotY, cfg.rotZ);
+                    this.group.add(ringGroup);
+                    this.rings.push({
+                        group: ringGroup,
+                        speed: cfg.speed,
+                        baseRotX: cfg.rotX,
+                        baseRotY: cfg.rotY,
+                        baseRotZ: cfg.rotZ,
+                        runeMesh: runeMesh,
+                        runeCount: runeIndices.length
+                    });
+                });
+            }
+
+            _buildSatellites() {
+                const count = 7;
+                for (let i = 0; i < count; i++) {
+                    const satGroup = new THREE.Group();
+                    const instances = [];
+                    const a = 2, b = 2, c = 1.5;
+                    for (let x = -a; x <= a; x++) {
+                        for (let y = -b; y <= b; y++) {
+                            for (let z = -c; z <= c; z++) {
+                                const dist = (x * x) / (a * a) + (y * y) / (b * b) + (z * z) / (c * c);
+                                if (dist <= 1.0 && dist >= 0.5) {
+                                    instances.push({ x, y, z });
+                                }
+                            }
+                        }
+                    }
+                    // Pupil
+                    const pupil = new THREE.Mesh(this.voxelGeo, this.matPupil);
+                    pupil.position.set(0, 0, c + 0.2);
+                    pupil.scale.set(0.8, 0.8, 0.4);
+                    satGroup.add(pupil);
+
+                    if (instances.length > 0) {
+                        const mesh = new THREE.InstancedMesh(this.voxelGeo, this.matSatellite, instances.length);
+                        const dummy = new THREE.Object3D();
+                        instances.forEach((pos, j) => {
+                            dummy.position.set(pos.x, pos.y, pos.z);
+                            dummy.scale.set(0.6, 0.6, 0.6);
+                            dummy.updateMatrix();
+                            mesh.setMatrixAt(j, dummy.matrix);
+                        });
+                        mesh.instanceMatrix.needsUpdate = true;
+                        satGroup.add(mesh);
+                    }
+
+                    const angleOffset = (i / count) * Math.PI * 2;
+                    const orbitRadius = 16 + Math.random() * 8;
+                    const orbitSpeed = 0.5 + Math.random() * 1.0;
+                    const orbitTilt = (Math.random() - 0.5) * 0.5;
+
+                    this.group.add(satGroup);
+                    this.satellites.push({
+                        mesh: satGroup,
+                        angleOffset: angleOffset,
+                        radius: orbitRadius,
+                        speed: orbitSpeed,
+                        tilt: orbitTilt,
+                        yOffset: (Math.random() - 0.5) * 20
+                    });
+                }
+            }
+
+            _buildWings() {
+                // Two large voxel angel wings — feathered, multi-layered, arching backward
+                const wingSpan = 32;
+                const wingDepth = 14;
+                const layers = 5;
+
+                [-1, 1].forEach(side => {
+                    const wingGroup = new THREE.Group();
+                    const boneInstances = [];
+                    const featherInstances = [];
+
+                    // Wing bone spine — a curved arch from center to tip
+                    for (let t = 0; t <= 1; t += 0.04) {
+                        const x = side * t * wingSpan;
+                        const y = Math.sin(t * Math.PI * 0.7) * 6 - t * 4;
+                        const z = -Math.sin(t * Math.PI * 0.5) * 8;
+                        boneInstances.push({ x, y, z, sx: 1.6, sy: 1.6, sz: 1.6 });
+                        // Secondary bone support
+                        if (t > 0.1 && t < 0.9) {
+                            boneInstances.push({ x: x + side * 1.5, y: y - 1, z: z + 1, sx: 1.2, sy: 1.2, sz: 1.2 });
+                        }
+                    }
+
+                    // Feather layers hanging from the bone spine
+                    for (let layer = 0; layer < layers; layer++) {
+                        const layerT = layer / (layers - 1);
+                        const layerLength = (1 - layerT * 0.6) * wingDepth;
+                        const featherCount = Math.floor(12 * (1 - layerT * 0.3));
+                        for (let f = 0; f < featherCount; f++) {
+                            const ft = f / (featherCount - 1 || 1);
+                            const boneX = side * ft * wingSpan;
+                            const boneY = Math.sin(ft * Math.PI * 0.7) * 6 - ft * 4;
+                            const boneZ = -Math.sin(ft * Math.PI * 0.5) * 8;
+                            // Feather droops downward and backward from bone
+                            const drop = layer * 1.8 + Math.random() * 0.5;
+                            const back = layer * 1.2 + Math.random() * 0.3;
+                            const fx = boneX + side * (Math.random() - 0.5) * 1.5;
+                            const fy = boneY - drop;
+                            const fz = boneZ - back;
+                            const len = layerLength * (0.5 + 0.5 * (1 - ft));
+                            featherInstances.push({ x: fx, y: fy, z: fz, sx: 1.0, sy: len * 0.6, sz: 0.35 });
+                        }
+                    }
+
+                    // Extra primary feathers at the wing tip
+                    for (let p = 0; p < 6; p++) {
+                        const pt = 0.85 + p / 6 * 0.15;
+                        const bx = side * pt * wingSpan;
+                        const by = Math.sin(pt * Math.PI * 0.7) * 6 - pt * 4;
+                        const bz = -Math.sin(pt * Math.PI * 0.5) * 8;
+                        featherInstances.push({
+                            x: bx + side * p * 0.8,
+                            y: by - p * 0.6,
+                            z: bz - p * 0.5,
+                            sx: 0.7, sy: 3.5 - p * 0.3, sz: 0.3
+                        });
+                    }
+
+                    const dummy = new THREE.Object3D();
+                    if (boneInstances.length > 0) {
+                        const boneMesh = new THREE.InstancedMesh(this.voxelGeo, this.matWingBone, boneInstances.length);
+                        boneInstances.forEach((b, i) => {
+                            dummy.position.set(b.x, b.y, b.z);
+                            dummy.scale.set(b.sx, b.sy, b.sz);
+                            dummy.updateMatrix();
+                            boneMesh.setMatrixAt(i, dummy.matrix);
+                        });
+                        boneMesh.instanceMatrix.needsUpdate = true;
+                        wingGroup.add(boneMesh);
+                    }
+                    if (featherInstances.length > 0) {
+                        const featherMesh = new THREE.InstancedMesh(this.voxelGeo, this.matWingFeather, featherInstances.length);
+                        featherInstances.forEach((f, i) => {
+                            dummy.position.set(f.x, f.y, f.z);
+                            dummy.scale.set(f.sx, f.sy, f.sz);
+                            dummy.updateMatrix();
+                            featherMesh.setMatrixAt(i, dummy.matrix);
+                        });
+                        featherMesh.instanceMatrix.needsUpdate = true;
+                        wingGroup.add(featherMesh);
+                    }
+
+                    wingGroup.position.set(0, 2, -6);
+                    this.group.add(wingGroup);
+                    this.wings.push({ group: wingGroup, side: side, baseRotZ: side * 0.25 });
+                });
+            }
+
+            _buildLightning() {
+                this.lightningLight = new THREE.PointLight(0xff0040, 0, 120);
+                this.lightningLight.position.set(0, 20, 0);
+                this.group.add(this.lightningLight);
+            }
+
+            _updatePositionFromCamera() {
+                const centerX = CONFIG.MAP_WIDTH * CONFIG.TILE_SIZE / 2;
+                const centerZ = CONFIG.MAP_HEIGHT * CONFIG.TILE_SIZE / 2;
+                const angle = typeof cameraAngle !== 'undefined' ? cameraAngle : this.cameraAngleOffset;
+                // Position Seraph opposite to camera direction, hovering at map edge
+                const offsetAngle = angle + Math.PI * 0.85;
+                this.group.position.x = centerX + Math.cos(offsetAngle) * this.hoverRadius;
+                this.group.position.z = centerZ + Math.sin(offsetAngle) * this.hoverRadius;
+                // Look toward center of map
+                this.group.lookAt(centerX, this.baseY * 0.3, centerZ);
+            }
+
+            _createBubbleDOM() {
+                this.bubbleDiv = document.createElement('div');
+                this.bubbleDiv.className = 'seraph-bubble';
+                this.bubbleDiv.style.display = 'none';
+                document.body.appendChild(this.bubbleDiv);
+
+                this.statusDiv = document.getElementById('seraph-status') || document.createElement('div');
+                if (!this.statusDiv.id) {
+                    this.statusDiv.id = 'seraph-status';
+                    this.statusDiv.textContent = 'SERAPH: OFFLINE';
+                    this.statusDiv.className = 'offline';
+                    document.body.appendChild(this.statusDiv);
+                }
+            }
+
+            _updateVisionStatus() {
+                if (!this.statusDiv) return;
+                const sv = window.seraphVision;
+                let html = '';
+                let cls = '';
+                if (!sv) {
+                    html = 'SERAPH: OFFLINE';
+                    cls = 'offline visible';
+                } else if (sv.isLoading) {
+                    html = 'SERAPH: AWAKENING...<span class="status-detail">Loading 649MB vision model...</span>';
+                    cls = 'loading visible';
+                } else if (sv.ready) {
+                    html = 'SERAPH: ALL-SEEING<span class="status-detail">Real-time board analysis active</span>';
+                    cls = 'ready visible';
+                    setTimeout(() => { if (this.statusDiv) this.statusDiv.classList.remove('visible'); }, 5000);
+                } else if (sv.loadError) {
+                    const reason = sv.errorReason || 'Unknown error';
+                    const shortReason = reason.length > 50 ? reason.substring(0, 50) + '...' : reason;
+                    html = 'SERAPH: DORMANT<span class="status-detail">' + shortReason + '</span><button id="seraph-retry" style="display:inline-block;" onclick="if(window.seraphVision){window.seraphVision.loadError=null;window.seraphVision.init();if(seraph)seraph._updateVisionStatus();}">Retry</button>';
+                    cls = 'offline visible';
+                } else {
+                    cls = '';
+                }
+                this.statusDiv.innerHTML = html;
+                this.statusDiv.className = cls;
+            }
+
+            showTaunt(text) {
+                const now = Date.now();
+                const name = localStorage.getItem('finalTowerUsername') || 'Architect';
+                text = text.replace(/\{name\}/g, name);
+                if (now - this.lastTauntTime < this.tauntCooldown) {
+                    this.bubbleQueue.push(text);
+                    return;
+                }
+                this.lastTauntTime = now;
+                this._showBubble(text, false);
+                this.setState('mocking', 4000);
+            }
+
+            showFallbackTaunt() {
+                const name = localStorage.getItem('finalTowerUsername') || 'Architect';
+                let text = this.preWrittenTaunts[this.fallbackIndex % this.preWrittenTaunts.length];
+                text = text.replace(/\{name\}/g, name);
+                this.fallbackIndex++;
+                this._showBubble(text, true);
+                this.setState('mocking', 3000);
+                this.lastTauntTime = Date.now();
+            }
+
+            _showBubble(text, isFallback) {
+                if (!this.bubbleDiv) return;
+                this.bubbleDiv.style.display = 'block';
+                this.bubbleDiv.classList.remove('visible');
+                this.bubbleIsFallback = !!isFallback;
+                const fallbackBadge = isFallback ? '<span class="seraph-bubble-badge">FALLBACK</span>' : '';
+                this.bubbleDiv.innerHTML = fallbackBadge + '<span class="seraph-bubble-typing"></span><span class="seraph-bubble-dismiss" onclick="seraph._dismissBubble()">x</span>';
+                this.bubbleText = text;
+                this.bubbleCharIndex = 0;
+                this.bubbleVisible = true;
+                this.bubbleTimer = 6000;
+                this.bubbleStartTime = Date.now();
+                // Trigger reflow
+                void this.bubbleDiv.offsetWidth;
+                this.bubbleDiv.classList.add('visible');
+            }
+
+            _dismissBubble() {
+                if (!this.bubbleDiv) return;
+                this.bubbleDiv.classList.remove('visible');
+                this.bubbleVisible = false;
+                setTimeout(() => {
+                    if (this.bubbleDiv) this.bubbleDiv.style.display = 'none';
+                }, 400);
+                if (this.bubbleQueue.length > 0) {
+                    const next = this.bubbleQueue.shift();
+                    setTimeout(() => this.showTaunt(next), 500);
+                }
+            }
+
+            setState(newState, duration) {
+                if (this.state === newState) return;
+                this.state = newState;
+                this.stateTimer = duration || 3000;
+                if (newState === 'mocking') {
+                    this.targetPupilScale = 0.6;
+                    this._flashLightning();
+                } else if (newState === 'enraged') {
+                    this.targetPupilScale = 1.6;
+                } else if (newState === 'watching') {
+                    this.targetPupilScale = 0.8;
+                } else {
+                    this.targetPupilScale = 1.0;
+                }
+            }
+
+            _flashLightning() {
+                if (!this.lightningLight) return;
+                this.lightningLight.intensity = 3;
+                setTimeout(() => { if (this.lightningLight) this.lightningLight.intensity = 0; }, 120);
+                setTimeout(() => { if (this.lightningLight) this.lightningLight.intensity = 2; }, 200);
+                setTimeout(() => { if (this.lightningLight) this.lightningLight.intensity = 0; }, 320);
+            }
+
+            onTowerPlaced() {
+                this.setState('watching', 2500);
+            }
+
+            onWaveStart(wave) {
+                if (wave === 1) {
+                    this.showTaunt("You dare organize chaos, {name}? I am the geometry above your fog.");
+                } else if (wave % 10 === 0) {
+                    this.showTaunt(`Wave ${wave}. Still breathing, {name}? How... tedious.`);
+                } else if (wave % 5 === 0) {
+                    this.showFallbackTaunt();
+                }
+            }
+
+            onEnemyReachedEnd() {
+                if (Math.random() < 0.3) this.showFallbackTaunt();
+            }
+
+            onPlayerWinning() {
+                if (this.state !== 'enraged' && Math.random() < 0.5) {
+                    this.setState('enraged', 5000);
+                    this.showTaunt("You think you control this board, {name}? I SEE EVERY SQUARE.");
+                }
+            }
+
+            update(time, delta, camera) {
+                this.time = time;
+                const dt = delta / 1000;
+
+                // State timer countdown
+                if (this.stateTimer > 0) {
+                    this.stateTimer -= delta;
+                    if (this.stateTimer <= 0) {
+                        this.setState('idle');
+                    }
+                }
+
+                // Bobbing
+                const bobAmp = this.state === 'mocking' ? 4 : this.state === 'enraged' ? 6 : 2;
+                const bobFreq = this.state === 'enraged' ? 2 : 1;
+                const targetY = this.baseY + Math.sin(time * bobFreq * 0.001) * bobAmp;
+                this.group.position.y += (targetY - this.group.position.y) * 0.05;
+
+                // State-based height adjustments (peek-through)
+                if (this.state === 'mocking') {
+                    const emergeY = this.fogHeight + 5;
+                    this.group.position.y += (emergeY - this.group.position.y) * 0.02;
+                }
+
+                // Pupil scale lerp
+                this.pupilScale += (this.targetPupilScale - this.pupilScale) * 0.1;
+                if (this.pupilGroup) {
+                    this.pupilGroup.scale.setScalar(this.pupilScale);
+                }
+
+                // Central eye subtle lookAt camera
+                if (this.centralEye) {
+                    const camDir = new THREE.Vector3();
+                    camera.getWorldPosition(camDir);
+                    camDir.sub(this.group.position);
+                    camDir.y = 0;
+                    const targetRotY = Math.atan2(camDir.x, camDir.z);
+                    this.centralEye.rotation.y += (targetRotY - this.centralEye.rotation.y) * 0.03;
+                }
+
+                // Ring rotation + rune pulse
+                this.rings.forEach((ring, i) => {
+                    const speedMult = this.state === 'watching' ? 3 : this.state === 'mocking' ? 1.5 : this.state === 'enraged' ? 4 : 1;
+                    const twitch = this.state === 'enraged' ? (Math.random() - 0.5) * 0.02 : 0;
+                    ring.group.rotation.x = ring.baseRotX + Math.sin(time * 0.0003 * (i + 1)) * 0.1 + twitch;
+                    ring.group.rotation.y += ring.speed * speedMult * dt;
+                    ring.group.rotation.z = ring.baseRotZ + Math.cos(time * 0.0002 * (i + 1)) * 0.05;
+
+                    // Rune pulse
+                    if (ring.runeMesh) {
+                        const pulse = 1.5 + Math.sin(time * 0.005 + i * 2) * 0.8;
+                        ring.runeMesh.material.emissiveIntensity = pulse * (this.state === 'enraged' ? 2 : 1);
+                    }
+                });
+
+                // Satellite orbit
+                this.satellites.forEach((sat, i) => {
+                    const speedMult = this.state === 'enraged' ? 2.5 : this.state === 'watching' ? 1.5 : 1;
+                    const angle = sat.angleOffset + time * 0.001 * sat.speed * speedMult;
+                    const r = sat.radius;
+                    sat.mesh.position.x = Math.cos(angle) * r;
+                    sat.mesh.position.z = Math.sin(angle) * r;
+                    sat.mesh.position.y = sat.yOffset + Math.sin(time * 0.002 + i) * 5;
+                    sat.mesh.rotation.y = -angle;
+                    // Look at most recently placed tower if watching
+                    if (this.state === 'watching' && gameState.towers.length > 0) {
+                        const lastTower = gameState.towers[gameState.towers.length - 1];
+                        if (lastTower && lastTower.mesh) {
+                            const twPos = lastTower.mesh.position.clone();
+                            twPos.sub(this.group.position);
+                            twPos.sub(sat.mesh.position);
+                            const lookTarget = new THREE.Vector3().copy(sat.mesh.position).add(twPos.normalize().multiplyScalar(10));
+                            sat.mesh.lookAt(lookTarget);
+                        }
+                    }
+                });
+
+                // Camera-relative position (smooth follow)
+                this._updatePositionFromCamera();
+
+                // Wing flapping
+                this.wings.forEach((wing, i) => {
+                    const flapSpeed = this.state === 'enraged' ? 0.004 : this.state === 'mocking' ? 0.002 : 0.001;
+                    const flapAmp = this.state === 'enraged' ? 0.35 : this.state === 'mocking' ? 0.2 : 0.12;
+                    const flap = Math.sin(time * flapSpeed + i * Math.PI) * flapAmp;
+                    wing.group.rotation.z = wing.baseRotZ + flap;
+                    wing.group.rotation.x = Math.sin(time * 0.0008 + i) * 0.05;
+                });
+
+                // Bubble positioning and typing
+                if (this.bubbleVisible && this.bubbleDiv) {
+                    const worldPos = new THREE.Vector3(0, 12, 0);
+                    worldPos.applyMatrix4(this.group.matrixWorld);
+                    worldPos.project(camera);
+                    const x = (worldPos.x * 0.5 + 0.5) * window.innerWidth;
+                    const y = (-worldPos.y * 0.5 + 0.5) * window.innerHeight;
+                    this.bubbleDiv.style.left = x + 'px';
+                    this.bubbleDiv.style.top = y + 'px';
+
+                    // Typewriter effect
+                    const elapsed = Date.now() - this.bubbleStartTime;
+                    const charsToShow = Math.floor(elapsed / 40);
+                    if (charsToShow > this.bubbleCharIndex && this.bubbleCharIndex < this.bubbleText.length) {
+                        this.bubbleCharIndex = Math.min(charsToShow, this.bubbleText.length);
+                        const textSpan = this.bubbleDiv.querySelector('.seraph-bubble-typing');
+                        if (textSpan) {
+                            textSpan.textContent = this.bubbleText.substring(0, this.bubbleCharIndex);
+                            if (this.bubbleCharIndex >= this.bubbleText.length) {
+                                textSpan.classList.remove('seraph-bubble-typing');
+                            }
+                        }
+                    }
+
+                    // Auto dismiss
+                    this.bubbleTimer -= delta;
+                    if (this.bubbleTimer <= 0) {
+                        this._dismissBubble();
+                    }
+                }
+
+                // Lightning decay
+                if (this.lightningLight && this.lightningLight.intensity > 0) {
+                    this.lightningLight.intensity *= 0.9;
+                    if (this.lightningLight.intensity < 0.01) this.lightningLight.intensity = 0;
+                }
+
+                // Vision status update (throttled)
+                if (Math.floor(time / 2000) !== this._lastStatusUpdate) {
+                    this._lastStatusUpdate = Math.floor(time / 2000);
+                    this._updateVisionStatus();
+                }
+
+                // Periodic fallback taunts during active waves
+                if (gameState.waveActive && Date.now() - this.lastTauntTime > this.tauntCooldown * 2) {
+                    if (Math.random() < 0.005) this.showFallbackTaunt();
+                }
+
+                // Vision model: periodic screenshot capture during active waves
+                if (gameState.waveActive && !this.isProcessingVision) {
+                    const now = Date.now();
+                    if (now - this.lastScreenshotTime > this.screenshotInterval) {
+                        this.lastScreenshotTime = now;
+                        this._captureAndQuery();
+                    }
+                }
+            }
+
+            _captureAndQuery() {
+                if (this.isProcessingVision) return;
+                this.isProcessingVision = true;
+                const imageBase64 = this._captureScreenshot();
+                if (!imageBase64) { this.isProcessingVision = false; return; }
+                if (!window.seraphVision || !window.seraphVision.ready) {
+                    this.isProcessingVision = false;
+                    return;
+                }
+                // Show processing indicator
+                if (this.statusDiv) {
+                    this.statusDiv.innerHTML = 'SERAPH: DIVINING<span class="status-detail">Analyzing the board...</span>';
+                    this.statusDiv.className = 'loading visible';
+                }
+                window.seraphVision.generate(imageBase64, '')
+                    .then(result => {
+                        if (result && result.taunt) {
+                            // If a fallback bubble is currently showing, dismiss it first
+                            if (this.bubbleVisible && this.bubbleIsFallback) {
+                                this._dismissBubble();
+                                setTimeout(() => this._showVisionResult(result), 300);
+                            } else {
+                                this._showVisionResult(result);
+                            }
+                        } else {
+                            this.showFallbackTaunt();
+                        }
+                    })
+                    .catch(e => {
+                        console.warn('Seraph vision error:', e.message);
+                        this.showFallbackTaunt();
+                    })
+                    .finally(() => {
+                        this.isProcessingVision = false;
+                        this._updateVisionStatus();
+                    });
+            }
+
+            _showVisionResult(result) {
+                this.showTaunt(result.taunt);
+                if (result.emotion) {
+                    const stateMap = { idle: 'idle', mocking: 'mocking', enraged: 'enraged', impressed: 'watching' };
+                    this.setState(stateMap[result.emotion] || 'mocking', 4000);
+                }
+                if (result.action && result.action !== 'none') {
+                    this._triggerGameAction(result.action);
+                }
+            }
+
+            _captureScreenshot() {
+                if (!renderer || !renderer.domElement) return null;
+                // Skip screenshot capture when opened locally (file://) — no vision server available
+                if (window.location.protocol === 'file:') return null;
+                const canvas = renderer.domElement;
+                const size = 512;
+                const offscreen = document.createElement('canvas');
+                offscreen.width = size;
+                offscreen.height = size;
+                const ctx = offscreen.getContext('2d');
+                if (!ctx) return null;
+                const srcW = canvas.width;
+                const srcH = canvas.height;
+                const minDim = Math.min(srcW, srcH);
+                const sx = (srcW - minDim) / 2;
+                const sy = (srcH - minDim) / 2;
+                ctx.drawImage(canvas, sx, sy, minDim, minDim, 0, 0, size, size);
+                return offscreen.toDataURL('image/png');
+            }
+
+            _triggerGameAction(action) {
+                if (!action || action === 'none') return;
+                console.log('Seraph action:', action);
+                if (action === 'spawn_extra') {
+                    if (gameState.waveActive && currentWave) {
+                        const extra = { type: 'basic', variant: 'fast', hpMult: 1.2 };
+                        if (gameState.activePaths && gameState.activePaths.length > 0) {
+                            gameState.activePaths.forEach(path => {
+                                const enemy = spawnEnemy(extra.type, extra.variant, gameState.wave, extra, path);
+                                if (enemy) gameState.enemies.push(enemy);
+                            });
+                        }
+                    }
+                } else if (action === 'speed_up') {
+                    gameState.enemies.forEach(e => { if (e.speed) e.speed *= 1.3; });
+                } else if (action === 'buff_enemies') {
+                    gameState.enemies.forEach(e => { if (e.hp) e.hp = Math.floor(e.hp * 1.2); });
+                }
+            }
+
+            dispose() {
+                if (this.group) {
+                    this.scene.remove(this.group);
+                    this.group.traverse(child => {
+                        if (child.geometry) child.geometry.dispose();
+                        if (child.material) {
+                            if (Array.isArray(child.material)) child.material.forEach(m => m.dispose());
+                            else child.material.dispose();
+                        }
+                    });
+                }
+                if (this.bubbleDiv && this.bubbleDiv.parentNode) {
+                    this.bubbleDiv.parentNode.removeChild(this.bubbleDiv);
+                }
             }
         }
 
@@ -2134,7 +3157,22 @@
             gameState.cameraTilt = 0.3;
             updateCameraPosition();
 
-            renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+            // Try WebGL with antialias first, then fallback without
+            try {
+                renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false, preserveDrawingBuffer: true });
+            } catch (e) {
+                console.warn('WebGL with antialias failed, trying without...');
+                try {
+                    renderer = new THREE.WebGLRenderer({ antialias: false, alpha: false, preserveDrawingBuffer: true });
+                } catch (e2) {
+                    console.error('WebGL is not available. The game requires a browser with WebGL support.');
+                    const container = document.getElementById('game-container');
+                    if (container) {
+                        container.innerHTML = '<div style="display:flex;align-items:center;justify-content:center;height:100vh;color:#fff;font-family:sans-serif;text-align:center;padding:20px;"><div><h1>WebGL Not Available</h1><p>This game requires WebGL to run. Please enable hardware acceleration in your browser settings, or try a different browser.</p></div></div>';
+                    }
+                    throw e2;
+                }
+            }
             renderer.setSize(window.innerWidth, window.innerHeight);
             renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
             renderer.shadowMap.enabled = true;
@@ -2178,6 +3216,8 @@
             createUI();
             setupEventListeners();
             setupLoginScreen();
+            seraph = new VoxelSeraph();
+            seraph.init(scene);
             animate();
         }
 
@@ -3301,6 +4341,7 @@
         function startWaveActive() {
             gameState.gamePhase = 'WAVE_ACTIVE';
             gameState.waveActive = true;
+            if (seraph) seraph.onWaveStart(gameState.wave);
             const waveData = generateWaveEnemies(gameState.wave);
             currentWaveNum = gameState.wave;
             currentWave = waveData;
@@ -4427,6 +5468,36 @@
                 const enemyGridZ = Math.floor(enemy.position.z / tileSize);
                 for (let t = gameState.towers.length - 1; t >= 0; t--) {
                     const tower = gameState.towers[t];
+                    // Trap trigger: enemy steps on armed trap
+                    if (tower.typeKey === 'TRAP' && tower.trapArmed && tower.gridX === enemyGridX && tower.gridZ === enemyGridZ) {
+                        tower.trapArmed = false;
+                        tower.trapCooldown = tower.trapCooldownMax;
+                        // Retract spikes
+                        const spikes = tower.mesh.userData.trapSpikes;
+                        const glow = tower.mesh.userData.glowRing;
+                        if (spikes) spikes.forEach(s => { s.scale.y = 0.01; s.position.y = 2; });
+                        if (glow) glow.material.opacity = 0.1;
+                        // AOE damage to all enemies in radius
+                        const trapRange = TOWER_TYPES.TRAP.range * CONFIG.TILE_SIZE;
+                        const aoeDmg = TOWER_TYPES.TRAP.damage * (tower.damageMult || 1);
+                        const tx = tower.mesh.position.x;
+                        const tz = tower.mesh.position.z;
+                        gameState.enemies.forEach(e => {
+                            if (!e.mesh || !e.mesh.parent) return;
+                            const d = Math.sqrt((e.position.x - tx) ** 2 + (e.position.z - tz) ** 2);
+                            if (d < trapRange) {
+                                e.health -= aoeDmg;
+                                e.hitFlash = 1;
+                                createImpactEffect(e.position, 'TRAP');
+                                const damagePercent = 1 - (e.health / e.maxHealth);
+                                applyDamageVisuals(e.mesh, damagePercent);
+                            }
+                        });
+                        // Visual explosion at trap center
+                        createExplosion(tx, 4, tz, 1.2);
+                        playDeathExplosion(new THREE.Vector3(tx, 4, tz), 'basic');
+                        continue; // trap takes no damage from enemy on trigger
+                    }
                     if (tower.gridX === enemyGridX && tower.gridZ === enemyGridZ) {
                         const towerDmg = enemy.damage * enemy.towerDamageMult * delta * 0.5;
                         tower.health -= towerDmg;
@@ -4466,6 +5537,7 @@
                     }
                 } else {
                     gameState.lives -= enemy.damage;
+                    if (seraph) seraph.onEnemyReachedEnd();
                     if (enemy.glowMesh && enemy.glowMesh.parent) { scene.remove(enemy.glowMesh); disposeMesh(enemy.glowMesh); }
                     scene.remove(enemy.mesh);
                     disposeMesh(enemy.mesh);
@@ -4695,6 +5767,9 @@
             gameState.energy = Math.min(CONFIG.MAX_ENERGY, gameState.energy + 20);
             if (Math.random() < 0.35) { showEventPopup(); }
             gameState.maxWaveReached = Math.max(gameState.maxWaveReached, gameState.wave);
+            if (seraph && gameState.lives >= CONFIG.BASE_LIVES * 0.7) {
+                seraph.onPlayerWinning();
+            }
             if (gameState.wave % 5 === 0) {
                 gameState.bossesDefeated = (gameState.bossesDefeated || 0) + 1;
             }
@@ -4780,6 +5855,7 @@
             }
             if (gameState.waveActive && gameState.enemies.length > 0) {
                 gameState.towers.forEach((tower, index) => {
+                    if (tower.typeKey === 'TRAP') return; // traps don't shoot projectiles
                     let closestEnemy = null;
                     let closestDist = Infinity;
                     const towerPos = tower.mesh.position;
@@ -4803,6 +5879,18 @@
                     if (now - tower.lastFired > fireRate) { createProjectile(index); tower.lastFired = now; }
                 });
             }
+            // Trap cooldown / rearm
+            gameState.towers.forEach(tower => {
+                if (tower.typeKey !== 'TRAP' || tower.trapArmed) return;
+                tower.trapCooldown -= delta;
+                if (tower.trapCooldown <= 0) {
+                    tower.trapArmed = true;
+                    const spikes = tower.mesh.userData.trapSpikes;
+                    const glow = tower.mesh.userData.glowRing;
+                    if (spikes) spikes.forEach(s => { s.scale.y = 1; s.position.y = 5; });
+                    if (glow) glow.material.opacity = 0.5;
+                }
+            });
             updateTowerRangeIndicators();
             checkWaveCompletion();
             updateEnemies(delta);
@@ -4878,6 +5966,7 @@
             });
             updateEnemyHealthBars();
             updateUI();
+            if (seraph) seraph.update(now, delta, camera);
             renderer.render(scene, camera);
         }
 

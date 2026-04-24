@@ -22,7 +22,7 @@ A browser-based 3D Tower Defense game built with Three.js. Defend your tower aga
 | **Basic** (AUTO) | 20⚡ | Auto-firing turret with balanced range and damage | Grass only |
 | **Sniper** (LONG) | 40⚡ | Long-range, high-damage, slow fire rate | Grass only |
 | **Cannon** (AOE) | 60⚡ | Area-of-effect damage hitting multiple enemies | **Path or grass** |
-| **Trap** (1-HIT) | 35⚡ | One-time use, massive damage to a single enemy | **Path or grass** |
+| **Trap** (TRAP) | 35⚡ | Pressure-plate mine: enemies stepping on it trigger AOE spike burst (40 dmg, 2-tile radius), then enters 2.5s cooldown. Retractable spikes + red glow ring show armed/disarmed state | **Path or grass** |
 | **Slow** (SLOW) | 45⚡ | Reduces enemy speed by 50% within range | Grass only |
 
 ### Enemy Types
@@ -64,14 +64,19 @@ Enemies cannot pass through turrets placed on their path. When an enemy encounte
 6. **Survive** — Don't let enemies reach the end!
 
 ### Running Locally
-```bash
-# Using Python
-python -m http.server 8080
 
+**Quick start (game only, no AI taunts):**
+```bash
+python -m http.server 8080
 # Then open http://localhost:8080/tower-defense.html
 ```
 
-Alternatively, use the VS Code Live Server extension.
+**Full experience with Seraph AI vision taunts:**
+```bash
+node server.js
+# Then open http://localhost:8080/tower-defense.html
+```
+The Node server auto-starts a local llama.cpp vision model (port 9999) that analyzes the board in real-time and generates contextual taunts. Model files are cached in `models/` after first download. Seraph also uses your login name in taunts when the AI is active.
 
 ## Project Structure
 ```
@@ -92,12 +97,11 @@ opencode-test/
 - **HTML/CSS** — UI overlay with frosted glass design
 
 ## Recent Updates
-- **Path Visibility** — Path tiles now pulse between dark brown and saturated green with emissive glow, making the enemy route clearly visible before and during waves
-- **Enemy Glitch Fix** — Fixed visibility flickering bug where all enemies toggled on/off every few frames; now only burrowing moles use invisibility
-- **Game Balance** — Reduced early wave enemy health scaling (from 0.12/0.08 per wave to 0.06/0.04) for smoother difficulty curve
-- **Scene Lighting** — Dimmed ambient and directional lighting so path tile emissive glow is more apparent
-- **Decoy Terrain** — Random brown dirt tiles scattered across grass areas for visual confusion and natural aesthetic
-- **Camera Fix** — Camera now properly centers on the map at game start using `updateCameraPosition()`
+- **Trap Tower Redesign** — Complete overhaul: flat pressure-plate mine with retractable spikes and red glow ring. Enemies stepping on it trigger AOE spike burst (40 dmg, 2-tile radius), then enters 2.5s cooldown with visual rearm animation. No longer one-time use.
+- **Seraph Visual Refresh** — Orbiting rings now vex-white (matching sclera), orbiting eyes moved closer (radius 16-24), wing bones changed to purple (iris color), wing feathers changed to white (sclera color)
+- **Seraph Personal Taunts** — AI-generated and fallback taunts now address the player by their login name naturally throughout the game
+- **Three.js Stability** — Fixed critical rendering error where disposed status-visual meshes (slow rings, burn flames, ice shells, poison bubbles) remained in the scene graph and caused `Cannot read properties of undefined` console spam every frame
+- **WebGL Optimization** — Added `preserveDrawingBuffer` to renderer to eliminate GPU stall warnings during screenshot capture for Seraph vision
 
 ## Development Workflow
 This project uses a coordinate database system for agent memory and workflow tracking. See `AGENTS.md` for details.

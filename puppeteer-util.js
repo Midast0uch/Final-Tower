@@ -192,6 +192,13 @@ async function screenshot(page, filePath, options = {}) {
 function serveStatic(directory, port = 0) {
   return new Promise((resolve, reject) => {
     const server = http.createServer((req, res) => {
+      // Handle Seraph Vision health check gracefully for tests
+      if (req.url === '/api/health') {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ llamaReady: false }));
+        return;
+      }
+
       // Simple path resolution — no directory traversal
       let filePath = path.join(directory, req.url === '/' ? 'index.html' : req.url);
       

@@ -6,7 +6,10 @@
   "scripts": {
     "test": "node test-runner.js",
     "test:watch": "nodemon --exec node test-runner.js",
-    "test:report": "node test-runner.js --report"
+    "test:report": "node test-runner.js --report",
+    "test:pw": "npx playwright test",
+    "test:pw:ui": "npx playwright test --ui",
+    "test:pw:debug": "npx playwright test --debug"
   },
   "keywords": [
     "tower-defense",
@@ -21,6 +24,9 @@
     "puppeteer-core": "^21.6.0"
   },
   "devDependencies": {
-    "nodemon": "^3.0.3"
+    "@playwright/mcp": "^0.0.70",
+    "@playwright/test": "^1.59.1",
+    "nodemon": "^3.0.3",
+    "playwright": "^1.59.0"
   }
 }
